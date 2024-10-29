@@ -82,6 +82,11 @@ class Leave (models.Model):
     start = models.CharField(blank=False, max_length=15)
     end = models.CharField(blank=False, max_length=15)
     status = models.CharField(choices=STATUS,  default='Not Approved',max_length=15)
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE)
+    leave_type = models.CharField(max_length=50)
+    start_date = models.DateField()
+    end_date = models.DateField()
+    documents = models.FileField(upload_to='leave_documents/')
 
     def __str__(self):
         return self.employee + ' ' + self.start

@@ -81,7 +81,10 @@ WSGI_APPLICATION = 'HRMSPROJECT.wsgi.application'
 # https://docs.djangoproject.com/en/2.2/ref/settings/#databases
 
 #Development
-
+# Default settings for sessions (useful for development)
+SESSION_COOKIE_SECURE = False  # Set to True in production with HTTPS
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+SESSION_COOKIE_AGE = 1209600
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
