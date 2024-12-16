@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"name": "HRMSPROJECT",
+			"path": ".."
+		}
+	],
+	"settings": {
+		"emmet.includeLanguages": {
+			"django-html": "html"
+		},
+		"git.ignoreLimitWarning": true
+	}
+}

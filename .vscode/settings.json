@@ -1,3 +1,51 @@
 {
-    "emmet.includeLanguages": {"django-html": "html"},
-}
+    "emmet.includeLanguages": {
+        "django-html": "html"
+    },
+    "git.ignoreLimitWarning": true,
+    "python.analysis.autoImportCompletions": true,
+    "cmake.sourceDirectory": "C:/Users/DeeAnn/Desktop/HRMSPROJECT/MyCppProject",
+    "files.associations": {
+        "*.html": "django-html",
+        "*.py": "python"
+    },
+    "python.pythonPath": "venv/Scripts/python.exe",
+    "python.linting.enabled": true,
+    "python.linting.pylintEnabled": true,
+    "python.linting.flake8Enabled": true,
+    "python.linting.mypyEnabled": true,
+    "python.formatting.provider": "black",
+    "python.testing.unittestEnabled": true,
+    "python.testing.pytestEnabled": true,
+    "python.testing.nosetestsEnabled": false,
+    "python.testing.autoTestDiscoverOnSaveEnabled": true,
+    "sqltools.connections": [
+        {
+            "mysqlOptions": {
+                "authProtocol": "default",
+                "enableSsl": "Disabled"
+            },
+            "previewLimit": 50,
+            "server": "localhost",
+            "port": 3306,
+            "driver": "MySQL",
+            "username": "deeann.bailey@icloud.com",
+            "database": "hrms",
+            "name": "MySQL"
+        },
+        {
+            "mysqlOptions": {
+                "authProtocol": "default",
+                "enableSsl": "Disabled"
+            },
+            "previewLimit": 50,
+            "server": "localhost",
+            "port": 3306,
+            "driver": "MySQL",
+            "name": "HRMSProject_Local",
+            "database": "hrms",
+            "username": "DeeAnn",
+            "password": "Cleo08/2020"
+        }
+    ]
+}  

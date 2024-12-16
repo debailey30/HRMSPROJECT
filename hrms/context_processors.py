@@ -1,6 +1,6 @@
 from .models import Department
 
-def get_departments(request):
+def get_departments():
 
-    depts = Department.objects.all().order_by('name')
+    depts = Department.objects.all().order_by('description')
     return { 'depts':depts}
