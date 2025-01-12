@@ -1,0 +1,15 @@
+-IC:/Qt/6.8.1/msvc2022_arm64/include/QtWidgets
+-IC:/Qt/6.8.1/msvc2022_arm64/include
+-IC:/Qt/6.8.1/msvc2022_arm64/include/QtCore
+-IC:/Qt/6.8.1/msvc2022_arm64/include/QtGui
+-IC:/Qt/6.8.1/msvc2022_arm64/include/QtGui
+-IC:/Qt/6.8.1/msvc2022_arm64/include
+-IC:/Qt/6.8.1/msvc2022_arm64/include/QtCore
+-IC:/Qt/6.8.1/msvc2022_arm64/include/QtCore
+-IC:/Qt/6.8.1/msvc2022_arm64/include
+-IC:/Program Files/MySQL/MySQL Server 8.0/include
+-DWIN32
+--compiler-flavor=msvc
+-o
+C:/Users/DeeAnn/Desktop/HRMSPROJECT/out/build/x64-Debug/src/moc_mainwindow.cpp
+C:/Users/DeeAnn/Desktop/HRMSPROJECT/src/mainwindow.h

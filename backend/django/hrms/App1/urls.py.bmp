@@ -1,0 +1,9 @@
+# app1/urls.py
+
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path('', views.index, name='index'),  # Example view
+    path('detail/<int:id>/', views.detail, name='detail'),
+]

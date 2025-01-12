@@ -1,0 +1,10 @@
+^C:\USERS\DEEANN\DESKTOP\HRMSPROJECT\BUILD\CMAKEFILES\AFF11BA8E9D1EFD5ED3F56473BE250CA\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/DeeAnn/Desktop/HRMSPROJECT -BC:/Users/DeeAnn/Desktop/HRMSPROJECT/build --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/Users/DeeAnn/Desktop/HRMSPROJECT/build/HRMSProject.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

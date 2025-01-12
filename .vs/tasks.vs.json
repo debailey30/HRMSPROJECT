@@ -1,0 +1,15 @@
+{
+  "version": "0.2.1",
+  "tasks": [
+    {
+      "taskLabel": "task-",
+      "appliesTo": ".qt/",
+      "type": "launch"
+    },
+    {
+      "taskLabel": "task-MyCppProject",
+      "appliesTo": "MyCppProject/",
+      "type": "launch"
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+^C:\USERS\DEEANN\DESKTOP\HRMSPROJECT\BUILD\CMAKEFILES\EA31CC101BE0517643FB1E364D9945EA\MOC_MAINWINDOW.CPP.RULE
+setlocal
+cd C:\Users\DeeAnn\Desktop\HRMSPROJECT\build\src
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+C:\Qt\6.8.1\msvc2022_64\bin\moc.exe @C:/Users/DeeAnn/Desktop/HRMSPROJECT/build/src/moc_mainwindow.cpp_parameters
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\DEEANN\DESKTOP\HRMSPROJECT\BUILD\CMAKEFILES\EA31CC101BE0517643FB1E364D9945EA\MOC_LOGINDIALOG.CPP.RULE
+setlocal
+cd C:\Users\DeeAnn\Desktop\HRMSPROJECT\build\src
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+C:\Qt\6.8.1\msvc2022_64\bin\moc.exe @C:/Users/DeeAnn/Desktop/HRMSPROJECT/build/src/moc_LoginDialog.cpp_parameters
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\DEEANN\DESKTOP\HRMSPROJECT\BUILD\CMAKEFILES\EA31CC101BE0517643FB1E364D9945EA\MOC_USERROLES.CPP.RULE
+setlocal
+cd C:\Users\DeeAnn\Desktop\HRMSPROJECT\build\src
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+C:\Qt\6.8.1\msvc2022_64\bin\moc.exe @C:/Users/DeeAnn/Desktop/HRMSPROJECT/build/src/moc_UserRoles.cpp_parameters
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\DEEANN\DESKTOP\HRMSPROJECT\SRC\MAINWINDOW.UI
+setlocal
+C:\Qt\6.8.1\msvc2022_64\bin\uic.exe -o C:/Users/DeeAnn/Desktop/HRMSPROJECT/build/ui_MainWindow.h C:/Users/DeeAnn/Desktop/HRMSPROJECT/src/MainWindow.ui
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\DEEANN\DESKTOP\HRMSPROJECT\SRC\LOGINDIALOG.UI
+setlocal
+C:\Qt\6.8.1\msvc2022_64\bin\uic.exe -o C:/Users/DeeAnn/Desktop/HRMSPROJECT/build/ui_LoginDialog.h C:/Users/DeeAnn/Desktop/HRMSPROJECT/src/LoginDialog.ui
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\DEEANN\DESKTOP\HRMSPROJECT\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/DeeAnn/Desktop/HRMSPROJECT -BC:/Users/DeeAnn/Desktop/HRMSPROJECT/build --check-stamp-file C:/Users/DeeAnn/Desktop/HRMSPROJECT/build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

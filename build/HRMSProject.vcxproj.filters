@@ -1,0 +1,56 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="C:\Users\DeeAnn\Desktop\HRMSPROJECT\src\Main.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\DeeAnn\Desktop\HRMSPROJECT\src\mainwindow.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\DeeAnn\Desktop\HRMSPROJECT\src\LoginDialog.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\DeeAnn\Desktop\HRMSPROJECT\build\src\moc_mainwindow.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\DeeAnn\Desktop\HRMSPROJECT\build\src\moc_LoginDialog.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\DeeAnn\Desktop\HRMSPROJECT\build\src\moc_UserRoles.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="C:\Users\DeeAnn\Desktop\HRMSPROJECT\build\ui_MainWindow.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\DeeAnn\Desktop\HRMSPROJECT\build\ui_LoginDialog.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\DeeAnn\Desktop\HRMSPROJECT\build\CMakeFiles\ea31cc101be0517643fb1e364d9945ea\moc_mainwindow.cpp.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\DeeAnn\Desktop\HRMSPROJECT\build\CMakeFiles\ea31cc101be0517643fb1e364d9945ea\moc_LoginDialog.cpp.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\DeeAnn\Desktop\HRMSPROJECT\build\CMakeFiles\ea31cc101be0517643fb1e364d9945ea\moc_UserRoles.cpp.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\DeeAnn\Desktop\HRMSPROJECT\src\MainWindow.ui" />
+    <CustomBuild Include="C:\Users\DeeAnn\Desktop\HRMSPROJECT\src\LoginDialog.ui" />
+    <CustomBuild Include="C:\Users\DeeAnn\Desktop\HRMSPROJECT\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{181F334F-4371-3F2A-AFD4-DFC796214A29}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{E15D5E4B-9800-3603-818E-43AFB0C4965F}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{FDC295CA-3C3F-3920-B619-B14337BE132C}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

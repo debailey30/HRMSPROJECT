@@ -1,0 +1,6 @@
+# Ensure all files use LF line endings
+* text eol=lf
+
+# Specific files can have different settings
+*.bat text eol=crlf
+*.sh text eol=lf

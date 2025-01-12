@@ -1,0 +1,29 @@
+{
+  "database": {
+    "host": "localhost",
+    "port": 5432,
+    "username": "user",
+    "password": "password",
+    "database": "mydatabase"
+  },
+  "server": {
+    "port": 8080,
+    "host": "0.0.0.0"
+  },
+  "logging": {
+    "level": "info",
+    "file": "logs/app.log"
+  },
+  "security": {
+    "jwtSecret": "your_jwt_secret",
+    "saltRounds": 10
+  },
+  "api": {
+    "baseUrl": "https://api.example.com",
+    "timeout": 5000
+  },
+  "features": {
+    "enableFeatureX": true,
+    "enableFeatureY": false
+  }
+}

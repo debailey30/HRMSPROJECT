@@ -4,7 +4,7 @@
     },
     "git.ignoreLimitWarning": true,
     "python.analysis.autoImportCompletions": true,
-    "cmake.sourceDirectory": "C:/Users/DeeAnn/Desktop/HRMSPROJECT/MyCppProject",
+    "cmake.sourceDirectory": "C:/Users/DeeAnn/Desktop/HRMSPROJECT",
     "files.associations": {
         "*.html": "django-html",
         "*.py": "python"
@@ -47,5 +47,6 @@
             "username": "DeeAnn",
             "password": "Cleo08/2020"
         }
-    ]
+    ],
+    "C_Cpp.errorSquiggles": "disabled"
 }  
