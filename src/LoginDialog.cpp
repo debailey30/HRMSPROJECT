@@ -1,6 +1,3 @@
-#ifndef LOGINDIALOG_H
-#define LOGINDIALOG_H
-
 #include <QDialog>
 #include "UserRoles.h"
 
@@ -25,8 +22,6 @@ private:
     Ui::LoginDialog *ui;
     UserRole userRole;
 };
-
-#endif // LOGINDIALOG_H
 
 #include "LoginDialog.h"
 #include "ui_LoginDialog.h"
