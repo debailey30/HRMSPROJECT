@@ -1,8 +1,6 @@
-from django.db.migrations import operations
-from django.db import transaction
 from django.db.transaction import atomic
 
-from django.db.migrations import IrreversibleError
+from .exceptions import IrreversibleError
 
 
 class Migration:
@@ -177,24 +175,6 @@ class Migration:
                 operation.database_backwards(self.app_label, schema_editor, from_state, to_state)
         return project_state
 
-    def suggest_name(self):
-        """
-        Suggest a name for the operations this migration might represent. Names
-        are not guaranteed to be unique, but put some effort into the fallback
-        name to avoid VCS conflicts if possible.
-        """
-        name = None
-        if len(self.operations) == 1:
-            name = self.operations[0].migration_name_fragment
-        elif (
-            len(self.operations) > 1 and
-            all(isinstance(o, operations.CreateModel) for o in self.operations)
-        ):
-            name = '_'.join(sorted(o.migration_name_fragment for o in self.operations))
-        if name is None:
-            name = 'initial' if self.initial else 'auto_%s' % get_migration_name_timestamp() # type: ignore
-        return name
-
 
 class SwappableTuple(tuple):
     """
@@ -207,13 +187,6 @@ class SwappableTuple(tuple):
         self.setting = setting
         return self
 
-    def __init__(self, value, setting):
-        self.setting = setting
-
-
-def get_migration_name_timestamp():
-    from datetime import datetime
-    return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 def swappable_dependency(value):
     """Turn a setting value into a dependency."""

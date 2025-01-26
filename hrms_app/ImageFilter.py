@@ -19,8 +19,8 @@ from __future__ import annotations
 import abc
 import functools
 from collections.abc import Sequence
-from types import ModuleType
-from typing import TYPE_CHECKING, Any, Callable, cast
+from custom_types import ModuleType
+from custom_typing import TYPE_CHECKING, Any, Callable, cast
 
 if TYPE_CHECKING:
     from . import _imaging

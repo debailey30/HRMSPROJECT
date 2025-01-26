@@ -1,8 +1,8 @@
 import importlib
 from codecs import IncrementalDecoder
-from collections import Counter
-from functools import lru_cache
-from typing import Counter as TypeCounter, Dict, List, Optional, Tuple
+from custom_collections import Counter
+from custom_functools import lru_cache
+from custom_typing import Counter as TypeCounter, Dict, List, Optional, Tuple
 
 from .constant import (
     FREQUENCIES,

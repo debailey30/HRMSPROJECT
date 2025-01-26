@@ -42,7 +42,7 @@ import subprocess
 import sys
 import tempfile
 import warnings
-from typing import IO, TYPE_CHECKING, Any
+from custom_typing import IO, TYPE_CHECKING, Any
 
 from . import Image, ImageFile
 from ._binary import i16be as i16

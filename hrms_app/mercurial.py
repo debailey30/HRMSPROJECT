@@ -1,7 +1,7 @@
 import configparser
 import logging
 import os
-from typing import List, Optional, Tuple
+from custom_typing import List, Optional, Tuple
 
 from pip._internal.exceptions import BadCommand, InstallationError
 from pip._internal.utils.misc import HiddenText, display_path

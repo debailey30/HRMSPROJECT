@@ -23,7 +23,7 @@
 from __future__ import annotations
 
 import math
-from functools import cached_property
+from custom_functools import cached_property
 
 from . import Image
 

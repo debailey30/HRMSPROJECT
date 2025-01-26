@@ -12,7 +12,7 @@ import logging
 import re
 import time
 from email.utils import parsedate_tz
-from typing import TYPE_CHECKING, Collection, Mapping
+from custom_typing import TYPE_CHECKING, Collection, Mapping
 
 from pip._vendor.requests.structures import CaseInsensitiveDict
 
@@ -20,7 +20,7 @@ from pip._vendor.cachecontrol.cache import DictCache, SeparateBodyBaseCache
 from pip._vendor.cachecontrol.serialize import Serializer
 
 if TYPE_CHECKING:
-    from typing import Literal
+    from custom_typing import Literal
 
     from pip._vendor.requests import PreparedRequest
     from pip._vendor.urllib3 import HTTPResponse
@@ -142,11 +142,6 @@ class CacheController:
         """
         Load a cached response, or return None if it's not available.
         """
-        # We do not support caching of partial content: so if the request contains a
-        # Range header then we don't want to load anything from the cache.
-        if "Range" in request.headers:
-            return None
-
         cache_url = request.url
         assert cache_url is not None
         cache_data = self.cache.get(cache_url)
@@ -485,7 +480,7 @@ class CacheController:
         cached_response.headers.update(
             {
                 k: v
-                for k, v in response.headers.items()
+                for k, v in response.headers.items()  # type: ignore[no-untyped-call]
                 if k.lower() not in excluded_headers
             }
         )

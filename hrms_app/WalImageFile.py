@@ -24,7 +24,7 @@ and has been tested with a few sample files found using google.
 """
 from __future__ import annotations
 
-from typing import IO
+from custom_typing import IO
 
 from . import Image, ImageFile
 from ._binary import i32le as i32

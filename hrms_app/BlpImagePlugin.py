@@ -36,7 +36,7 @@ import os
 import struct
 from enum import IntEnum
 from io import BytesIO
-from typing import IO
+from custom_typing import IO
 
 from . import Image, ImageFile
 

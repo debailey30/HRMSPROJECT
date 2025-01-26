@@ -1,5 +1,5 @@
 import warnings
-from collections import Counter
+from custom_collections import Counter
 from urllib import parse
 
 from django.db import models

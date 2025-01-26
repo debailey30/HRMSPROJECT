@@ -6,8 +6,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 import string
-from types import MappingProxyType
-from typing import Any, BinaryIO, NamedTuple
+from custom_types import MappingProxyType
+from custom_typing import Any, BinaryIO, NamedTuple
 
 from ._re import (
     RE_DATETIME,

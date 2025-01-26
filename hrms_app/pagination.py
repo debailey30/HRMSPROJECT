@@ -6,7 +6,7 @@ be used for paginated responses.
 import contextlib
 import warnings
 from base64 import b64decode, b64encode
-from collections import namedtuple
+from custom_collections import namedtuple
 from urllib import parse
 
 from django.core.paginator import InvalidPage

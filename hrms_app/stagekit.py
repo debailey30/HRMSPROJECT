@@ -1,5 +1,5 @@
 import time
-from typing import Optional
+from custom_typing import Optional
 
 from django.http import HttpResponseRedirect
 from django.urls import reverse

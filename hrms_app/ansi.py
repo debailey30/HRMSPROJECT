@@ -1,7 +1,7 @@
 import re
 import sys
 from contextlib import suppress
-from typing import Iterable, NamedTuple, Optional
+from custom_typing import Iterable, NamedTuple, Optional
 
 from .color import Color
 from .style import Style

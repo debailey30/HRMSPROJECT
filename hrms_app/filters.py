@@ -1,385 +1,422 @@
 """
-Provides generic filtering backends that can be used to filter the results
-returned by list views.
-"""
-import operator
-import warnings
-from functools import reduce
+This encapsulates the logic for displaying filters in the Django admin.
+Filters are specified in models with the "list_filter" option.
 
-from django.core.exceptions import FieldDoesNotExist, ImproperlyConfigured
+Each filter subclass knows how to display a filter for a field that passes a
+certain test -- e.g. being a DateField or ForeignKey.
+"""
+import datetime
+
+from django.contrib.admin.options import IncorrectLookupParameters
+from django.contrib.admin.utils import (
+    get_model_from_relation, prepare_lookup_value, reverse_field_path,
+)
+from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.db import models
-from django.db.models.constants import LOOKUP_SEP
-from django.template import loader
-from django.utils.encoding import force_str
-from django.utils.text import smart_split, unescape_string_literal
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
-from rest_framework import RemovedInDRF317Warning
-from rest_framework.compat import coreapi, coreschema
-from rest_framework.fields import CharField
-from rest_framework.settings import api_settings
 
+class ListFilter:
+    title = None  # Human-readable title to appear in the right sidebar.
+    template = 'admin/filter.html'
 
-def search_smart_split(search_terms):
-    """generator that first splits string by spaces, leaving quoted phrases together,
-    then it splits non-quoted phrases by commas.
-    """
-    split_terms = []
-    for term in smart_split(search_terms):
-        # trim commas to avoid bad matching for quoted phrases
-        term = term.strip(',')
-        if term.startswith(('"', "'")) and term[0] == term[-1]:
-            # quoted phrases are kept together without any other split
-            split_terms.append(unescape_string_literal(term))
-        else:
-            # non-quoted tokens are split by comma, keeping only non-empty ones
-            for sub_term in term.split(','):
-                if sub_term:
-                    split_terms.append(sub_term.strip())
-    return split_terms
+    def __init__(self, request, params, model, model_admin):
+        # This dictionary will eventually contain the request's query string
+        # parameters actually used by this filter.
+        self.used_parameters = {}
+        if self.title is None:
+            raise ImproperlyConfigured(
+                "The list filter '%s' does not specify a 'title'."
+                % self.__class__.__name__
+            )
 
-
-class BaseFilterBackend:
-    """
-    A base class from which all filter backend classes should inherit.
-    """
-
-    def filter_queryset(self, request, queryset, view):
+    def has_output(self):
         """
-        Return a filtered queryset.
+        Return True if some choices would be output for this filter.
         """
-        raise NotImplementedError(".filter_queryset() must be overridden.")
+        raise NotImplementedError('subclasses of ListFilter must provide a has_output() method')
 
-    def get_schema_fields(self, view):
-        assert coreapi is not None, 'coreapi must be installed to use `get_schema_fields()`'
-        if coreapi is not None:
-            warnings.warn('CoreAPI compatibility is deprecated and will be removed in DRF 3.17', RemovedInDRF317Warning)
-        assert coreschema is not None, 'coreschema must be installed to use `get_schema_fields()`'
-        return []
-
-    def get_schema_operation_parameters(self, view):
-        return []
-
-
-class SearchFilter(BaseFilterBackend):
-    # The URL query parameter used for the search.
-    search_param = api_settings.SEARCH_PARAM
-    template = 'rest_framework/filters/search.html'
-    lookup_prefixes = {
-        '^': 'istartswith',
-        '=': 'iexact',
-        '@': 'search',
-        '$': 'iregex',
-    }
-    search_title = _('Search')
-    search_description = _('A search term.')
-
-    def get_search_fields(self, view, request):
+    def choices(self, changelist):
         """
-        Search fields are obtained from the view, but the request is always
-        passed to this method. Sub-classes can override this method to
-        dynamically change the search fields based on request content.
+        Return choices ready to be output in the template.
+
+        `changelist` is the ChangeList to be displayed.
         """
-        return getattr(view, 'search_fields', None)
+        raise NotImplementedError('subclasses of ListFilter must provide a choices() method')
 
-    def get_search_terms(self, request):
+    def queryset(self, request, queryset):
         """
-        Search terms are set by a ?search=... query parameter,
-        and may be whitespace delimited.
+        Return the filtered queryset.
         """
-        value = request.query_params.get(self.search_param, '')
-        field = CharField(trim_whitespace=False, allow_blank=True)
-        cleaned_value = field.run_validation(value)
-        return search_smart_split(cleaned_value)
+        raise NotImplementedError('subclasses of ListFilter must provide a queryset() method')
 
-    def construct_search(self, field_name, queryset):
-        lookup = self.lookup_prefixes.get(field_name[0])
-        if lookup:
-            field_name = field_name[1:]
-        else:
-            # Use field_name if it includes a lookup.
-            opts = queryset.model._meta
-            lookup_fields = field_name.split(LOOKUP_SEP)
-            # Go through the fields, following all relations.
-            prev_field = None
-            for path_part in lookup_fields:
-                if path_part == "pk":
-                    path_part = opts.pk.name
-                try:
-                    field = opts.get_field(path_part)
-                except FieldDoesNotExist:
-                    # Use valid query lookups.
-                    if prev_field and prev_field.get_lookup(path_part):
-                        return field_name
-                else:
-                    prev_field = field
-                    if hasattr(field, "path_infos"):
-                        # Update opts to follow the relation.
-                        opts = field.path_infos[-1].to_opts
-                    # django < 4.1
-                    elif hasattr(field, 'get_path_info'):
-                        # Update opts to follow the relation.
-                        opts = field.get_path_info()[-1].to_opts
-            # Otherwise, use the field with icontains.
-            lookup = 'icontains'
-        return LOOKUP_SEP.join([field_name, lookup])
-
-    def must_call_distinct(self, queryset, search_fields):
+    def expected_parameters(self):
         """
-        Return True if 'distinct()' should be used to query the given lookups.
+        Return the list of parameter names that are expected from the
+        request's query string and that will be used by this filter.
         """
-        for search_field in search_fields:
-            opts = queryset.model._meta
-            if search_field[0] in self.lookup_prefixes:
-                search_field = search_field[1:]
-            # Annotated fields do not need to be distinct
-            if isinstance(queryset, models.QuerySet) and search_field in queryset.query.annotations:
-                continue
-            parts = search_field.split(LOOKUP_SEP)
-            for part in parts:
-                field = opts.get_field(part)
-                if hasattr(field, 'get_path_info'):
-                    # This field is a relation, update opts to follow the relation
-                    path_info = field.get_path_info()
-                    opts = path_info[-1].to_opts
-                    if any(path.m2m for path in path_info):
-                        # This field is a m2m relation so we know we need to call distinct
-                        return True
-                else:
-                    # This field has a custom __ query transform but is not a relational field.
-                    break
-        return False
+        raise NotImplementedError('subclasses of ListFilter must provide an expected_parameters() method')
 
-    def filter_queryset(self, request, queryset, view):
-        search_fields = self.get_search_fields(view, request)
-        search_terms = self.get_search_terms(request)
 
-        if not search_fields or not search_terms:
-            return queryset
+class SimpleListFilter(ListFilter):
+    # The parameter that should be used in the query string for that filter.
+    parameter_name = None
 
-        orm_lookups = [
-            self.construct_search(str(search_field), queryset)
-            for search_field in search_fields
-        ]
+    def __init__(self, request, params, model, model_admin):
+        super().__init__(request, params, model, model_admin)
+        if self.parameter_name is None:
+            raise ImproperlyConfigured(
+                "The list filter '%s' does not specify a 'parameter_name'."
+                % self.__class__.__name__
+            )
+        if self.parameter_name in params:
+            value = params.pop(self.parameter_name)
+            self.used_parameters[self.parameter_name] = value
+        lookup_choices = self.lookups(request, model_admin)
+        if lookup_choices is None:
+            lookup_choices = ()
+        self.lookup_choices = list(lookup_choices)
 
-        base = queryset
-        # generator which for each term builds the corresponding search
-        conditions = (
-            reduce(
-                operator.or_,
-                (models.Q(**{orm_lookup: term}) for orm_lookup in orm_lookups)
-            ) for term in search_terms
+    def has_output(self):
+        return len(self.lookup_choices) > 0
+
+    def value(self):
+        """
+        Return the value (in string format) provided in the request's
+        query string for this filter, if any, or None if the value wasn't
+        provided.
+        """
+        return self.used_parameters.get(self.parameter_name)
+
+    def lookups(self, request, model_admin):
+        """
+        Must be overridden to return a list of tuples (value, verbose value)
+        """
+        raise NotImplementedError(
+            'The SimpleListFilter.lookups() method must be overridden to '
+            'return a list of tuples (value, verbose value).'
         )
-        queryset = queryset.filter(reduce(operator.and_, conditions))
 
-        # Remove duplicates from results, if necessary
-        if self.must_call_distinct(queryset, search_fields):
-            # inspired by django.contrib.admin
-            # this is more accurate than .distinct form M2M relationship
-            # also is cross-database
-            queryset = queryset.filter(pk=models.OuterRef('pk'))
-            queryset = base.filter(models.Exists(queryset))
-        return queryset
+    def expected_parameters(self):
+        return [self.parameter_name]
 
-    def to_html(self, request, queryset, view):
-        if not getattr(view, 'search_fields', None):
-            return ''
-
-        context = {
-            'param': self.search_param,
-            'term': request.query_params.get(self.search_param, ''),
+    def choices(self, changelist):
+        yield {
+            'selected': self.value() is None,
+            'query_string': changelist.get_query_string(remove=[self.parameter_name]),
+            'display': _('All'),
         }
-        template = loader.get_template(self.template)
-        return template.render(context)
-
-    def get_schema_fields(self, view):
-        assert coreapi is not None, 'coreapi must be installed to use `get_schema_fields()`'
-        if coreapi is not None:
-            warnings.warn('CoreAPI compatibility is deprecated and will be removed in DRF 3.17', RemovedInDRF317Warning)
-        assert coreschema is not None, 'coreschema must be installed to use `get_schema_fields()`'
-        return [
-            coreapi.Field(
-                name=self.search_param,
-                required=False,
-                location='query',
-                schema=coreschema.String(
-                    title=force_str(self.search_title),
-                    description=force_str(self.search_description)
-                )
-            )
-        ]
-
-    def get_schema_operation_parameters(self, view):
-        return [
-            {
-                'name': self.search_param,
-                'required': False,
-                'in': 'query',
-                'description': force_str(self.search_description),
-                'schema': {
-                    'type': 'string',
-                },
-            },
-        ]
+        for lookup, title in self.lookup_choices:
+            yield {
+                'selected': self.value() == str(lookup),
+                'query_string': changelist.get_query_string({self.parameter_name: lookup}),
+                'display': title,
+            }
 
 
-class OrderingFilter(BaseFilterBackend):
-    # The URL query parameter used for the ordering.
-    ordering_param = api_settings.ORDERING_PARAM
-    ordering_fields = None
-    ordering_title = _('Ordering')
-    ordering_description = _('Which field to use when ordering the results.')
-    template = 'rest_framework/filters/ordering.html'
+class FieldListFilter(ListFilter):
+    _field_list_filters = []
+    _take_priority_index = 0
 
-    def get_ordering(self, request, queryset, view):
-        """
-        Ordering is set by a comma delimited ?ordering=... query parameter.
+    def __init__(self, field, request, params, model, model_admin, field_path):
+        self.field = field
+        self.field_path = field_path
+        self.title = getattr(field, 'verbose_name', field_path)
+        super().__init__(request, params, model, model_admin)
+        for p in self.expected_parameters():
+            if p in params:
+                value = params.pop(p)
+                self.used_parameters[p] = prepare_lookup_value(p, value)
 
-        The `ordering` query parameter can be overridden by setting
-        the `ordering_param` value on the OrderingFilter or by
-        specifying an `ORDERING_PARAM` value in the API settings.
-        """
-        params = request.query_params.get(self.ordering_param)
-        if params:
-            fields = [param.strip() for param in params.split(',')]
-            ordering = self.remove_invalid_fields(queryset, fields, view, request)
-            if ordering:
-                return ordering
+    def has_output(self):
+        return True
 
-        # No ordering was included, or all the ordering fields were invalid
-        return self.get_default_ordering(view)
+    def queryset(self, request, queryset):
+        try:
+            return queryset.filter(**self.used_parameters)
+        except (ValueError, ValidationError) as e:
+            # Fields may raise a ValueError or ValidationError when converting
+            # the parameters to the correct type.
+            raise IncorrectLookupParameters(e)
 
-    def get_default_ordering(self, view):
-        ordering = getattr(view, 'ordering', None)
-        if isinstance(ordering, str):
-            return (ordering,)
-        return ordering
-
-    def get_default_valid_fields(self, queryset, view, context={}):
-        # If `ordering_fields` is not specified, then we determine a default
-        # based on the serializer class, if one exists on the view.
-        if hasattr(view, 'get_serializer_class'):
-            try:
-                serializer_class = view.get_serializer_class()
-            except AssertionError:
-                # Raised by the default implementation if
-                # no serializer_class was found
-                serializer_class = None
+    @classmethod
+    def register(cls, test, list_filter_class, take_priority=False):
+        if take_priority:
+            # This is to allow overriding the default filters for certain types
+            # of fields with some custom filters. The first found in the list
+            # is used in priority.
+            cls._field_list_filters.insert(
+                cls._take_priority_index, (test, list_filter_class))
+            cls._take_priority_index += 1
         else:
-            serializer_class = getattr(view, 'serializer_class', None)
+            cls._field_list_filters.append((test, list_filter_class))
 
-        if serializer_class is None:
-            msg = (
-                "Cannot use %s on a view which does not have either a "
-                "'serializer_class', an overriding 'get_serializer_class' "
-                "or 'ordering_fields' attribute."
-            )
-            raise ImproperlyConfigured(msg % self.__class__.__name__)
+    @classmethod
+    def create(cls, field, request, params, model, model_admin, field_path):
+        for test, list_filter_class in cls._field_list_filters:
+            if test(field):
+                return list_filter_class(field, request, params, model, model_admin, field_path=field_path)
 
-        model_class = queryset.model
-        model_property_names = [
-            # 'pk' is a property added in Django's Model class, however it is valid for ordering.
-            attr for attr in dir(model_class) if isinstance(getattr(model_class, attr), property) and attr != 'pk'
-        ]
 
-        return [
-            (field.source.replace('.', '__') or field_name, field.label)
-            for field_name, field in serializer_class(context=context).fields.items()
-            if (
-                not getattr(field, 'write_only', False) and
-                not field.source == '*' and
-                field.source not in model_property_names
-            )
-        ]
-
-    def get_valid_fields(self, queryset, view, context={}):
-        valid_fields = getattr(view, 'ordering_fields', self.ordering_fields)
-
-        if valid_fields is None:
-            # Default to allowing filtering on serializer fields
-            return self.get_default_valid_fields(queryset, view, context)
-
-        elif valid_fields == '__all__':
-            # View explicitly allows filtering on any model field
-            valid_fields = [
-                (field.name, field.verbose_name) for field in queryset.model._meta.fields
-            ]
-            valid_fields += [
-                (key, key.title().split('__'))
-                for key in queryset.query.annotations
-            ]
+class RelatedFieldListFilter(FieldListFilter):
+    def __init__(self, field, request, params, model, model_admin, field_path):
+        other_model = get_model_from_relation(field)
+        self.lookup_kwarg = '%s__%s__exact' % (field_path, field.target_field.name)
+        self.lookup_kwarg_isnull = '%s__isnull' % field_path
+        self.lookup_val = params.get(self.lookup_kwarg)
+        self.lookup_val_isnull = params.get(self.lookup_kwarg_isnull)
+        super().__init__(field, request, params, model, model_admin, field_path)
+        self.lookup_choices = self.field_choices(field, request, model_admin)
+        if hasattr(field, 'verbose_name'):
+            self.lookup_title = field.verbose_name
         else:
-            valid_fields = [
-                (item, item) if isinstance(item, str) else item
-                for item in valid_fields
-            ]
+            self.lookup_title = other_model._meta.verbose_name
+        self.title = self.lookup_title
+        self.empty_value_display = model_admin.get_empty_value_display()
 
-        return valid_fields
+    @property
+    def include_empty_choice(self):
+        """
+        Return True if a "(None)" choice should be included, which filters
+        out everything except empty relationships.
+        """
+        return self.field.null or (self.field.is_relation and self.field.many_to_many)
 
-    def remove_invalid_fields(self, queryset, fields, view, request):
-        valid_fields = [item[0] for item in self.get_valid_fields(queryset, view, {'request': request})]
+    def has_output(self):
+        if self.include_empty_choice:
+            extra = 1
+        else:
+            extra = 0
+        return len(self.lookup_choices) + extra > 1
 
-        def term_valid(term):
-            if term.startswith("-"):
-                term = term[1:]
-            return term in valid_fields
+    def expected_parameters(self):
+        return [self.lookup_kwarg, self.lookup_kwarg_isnull]
 
-        return [term for term in fields if term_valid(term)]
+    def field_choices(self, field, request, model_admin):
+        ordering = ()
+        related_admin = model_admin.admin_site._registry.get(field.remote_field.model)
+        if related_admin is not None:
+            ordering = related_admin.get_ordering(request)
+        return field.get_choices(include_blank=False, ordering=ordering)
 
-    def filter_queryset(self, request, queryset, view):
-        ordering = self.get_ordering(request, queryset, view)
-
-        if ordering:
-            return queryset.order_by(*ordering)
-
-        return queryset
-
-    def get_template_context(self, request, queryset, view):
-        current = self.get_ordering(request, queryset, view)
-        current = None if not current else current[0]
-        options = []
-        context = {
-            'request': request,
-            'current': current,
-            'param': self.ordering_param,
+    def choices(self, changelist):
+        yield {
+            'selected': self.lookup_val is None and not self.lookup_val_isnull,
+            'query_string': changelist.get_query_string(remove=[self.lookup_kwarg, self.lookup_kwarg_isnull]),
+            'display': _('All'),
         }
-        for key, label in self.get_valid_fields(queryset, view, context):
-            options.append((key, '%s - %s' % (label, _('ascending'))))
-            options.append(('-' + key, '%s - %s' % (label, _('descending'))))
-        context['options'] = options
-        return context
+        for pk_val, val in self.lookup_choices:
+            yield {
+                'selected': self.lookup_val == str(pk_val),
+                'query_string': changelist.get_query_string({self.lookup_kwarg: pk_val}, [self.lookup_kwarg_isnull]),
+                'display': val,
+            }
+        if self.include_empty_choice:
+            yield {
+                'selected': bool(self.lookup_val_isnull),
+                'query_string': changelist.get_query_string({self.lookup_kwarg_isnull: 'True'}, [self.lookup_kwarg]),
+                'display': self.empty_value_display,
+            }
 
-    def to_html(self, request, queryset, view):
-        template = loader.get_template(self.template)
-        context = self.get_template_context(request, queryset, view)
-        return template.render(context)
 
-    def get_schema_fields(self, view):
-        assert coreapi is not None, 'coreapi must be installed to use `get_schema_fields()`'
-        if coreapi is not None:
-            warnings.warn('CoreAPI compatibility is deprecated and will be removed in DRF 3.17', RemovedInDRF317Warning)
-        assert coreschema is not None, 'coreschema must be installed to use `get_schema_fields()`'
-        return [
-            coreapi.Field(
-                name=self.ordering_param,
-                required=False,
-                location='query',
-                schema=coreschema.String(
-                    title=force_str(self.ordering_title),
-                    description=force_str(self.ordering_description)
-                )
+FieldListFilter.register(lambda f: f.remote_field, RelatedFieldListFilter)
+
+
+class BooleanFieldListFilter(FieldListFilter):
+    def __init__(self, field, request, params, model, model_admin, field_path):
+        self.lookup_kwarg = '%s__exact' % field_path
+        self.lookup_kwarg2 = '%s__isnull' % field_path
+        self.lookup_val = params.get(self.lookup_kwarg)
+        self.lookup_val2 = params.get(self.lookup_kwarg2)
+        super().__init__(field, request, params, model, model_admin, field_path)
+        if (self.used_parameters and self.lookup_kwarg in self.used_parameters and
+                self.used_parameters[self.lookup_kwarg] in ('1', '0')):
+            self.used_parameters[self.lookup_kwarg] = bool(int(self.used_parameters[self.lookup_kwarg]))
+
+    def expected_parameters(self):
+        return [self.lookup_kwarg, self.lookup_kwarg2]
+
+    def choices(self, changelist):
+        for lookup, title in (
+                (None, _('All')),
+                ('1', _('Yes')),
+                ('0', _('No'))):
+            yield {
+                'selected': self.lookup_val == lookup and not self.lookup_val2,
+                'query_string': changelist.get_query_string({self.lookup_kwarg: lookup}, [self.lookup_kwarg2]),
+                'display': title,
+            }
+        if self.field.null:
+            yield {
+                'selected': self.lookup_val2 == 'True',
+                'query_string': changelist.get_query_string({self.lookup_kwarg2: 'True'}, [self.lookup_kwarg]),
+                'display': _('Unknown'),
+            }
+
+
+FieldListFilter.register(lambda f: isinstance(f, models.BooleanField), BooleanFieldListFilter)
+
+
+class ChoicesFieldListFilter(FieldListFilter):
+    def __init__(self, field, request, params, model, model_admin, field_path):
+        self.lookup_kwarg = '%s__exact' % field_path
+        self.lookup_kwarg_isnull = '%s__isnull' % field_path
+        self.lookup_val = params.get(self.lookup_kwarg)
+        self.lookup_val_isnull = params.get(self.lookup_kwarg_isnull)
+        super().__init__(field, request, params, model, model_admin, field_path)
+
+    def expected_parameters(self):
+        return [self.lookup_kwarg, self.lookup_kwarg_isnull]
+
+    def choices(self, changelist):
+        yield {
+            'selected': self.lookup_val is None,
+            'query_string': changelist.get_query_string(remove=[self.lookup_kwarg, self.lookup_kwarg_isnull]),
+            'display': _('All')
+        }
+        none_title = ''
+        for lookup, title in self.field.flatchoices:
+            if lookup is None:
+                none_title = title
+                continue
+            yield {
+                'selected': str(lookup) == self.lookup_val,
+                'query_string': changelist.get_query_string({self.lookup_kwarg: lookup}, [self.lookup_kwarg_isnull]),
+                'display': title,
+            }
+        if none_title:
+            yield {
+                'selected': bool(self.lookup_val_isnull),
+                'query_string': changelist.get_query_string({self.lookup_kwarg_isnull: 'True'}, [self.lookup_kwarg]),
+                'display': none_title,
+            }
+
+
+FieldListFilter.register(lambda f: bool(f.choices), ChoicesFieldListFilter)
+
+
+class DateFieldListFilter(FieldListFilter):
+    def __init__(self, field, request, params, model, model_admin, field_path):
+        self.field_generic = '%s__' % field_path
+        self.date_params = {k: v for k, v in params.items() if k.startswith(self.field_generic)}
+
+        now = timezone.now()
+        # When time zone support is enabled, convert "now" to the user's time
+        # zone so Django's definition of "Today" matches what the user expects.
+        if timezone.is_aware(now):
+            now = timezone.localtime(now)
+
+        if isinstance(field, models.DateTimeField):
+            today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        else:       # field is a models.DateField
+            today = now.date()
+        tomorrow = today + datetime.timedelta(days=1)
+        if today.month == 12:
+            next_month = today.replace(year=today.year + 1, month=1, day=1)
+        else:
+            next_month = today.replace(month=today.month + 1, day=1)
+        next_year = today.replace(year=today.year + 1, month=1, day=1)
+
+        self.lookup_kwarg_since = '%s__gte' % field_path
+        self.lookup_kwarg_until = '%s__lt' % field_path
+        self.links = (
+            (_('Any date'), {}),
+            (_('Today'), {
+                self.lookup_kwarg_since: str(today),
+                self.lookup_kwarg_until: str(tomorrow),
+            }),
+            (_('Past 7 days'), {
+                self.lookup_kwarg_since: str(today - datetime.timedelta(days=7)),
+                self.lookup_kwarg_until: str(tomorrow),
+            }),
+            (_('This month'), {
+                self.lookup_kwarg_since: str(today.replace(day=1)),
+                self.lookup_kwarg_until: str(next_month),
+            }),
+            (_('This year'), {
+                self.lookup_kwarg_since: str(today.replace(month=1, day=1)),
+                self.lookup_kwarg_until: str(next_year),
+            }),
+        )
+        if field.null:
+            self.lookup_kwarg_isnull = '%s__isnull' % field_path
+            self.links += (
+                (_('No date'), {self.field_generic + 'isnull': 'True'}),
+                (_('Has date'), {self.field_generic + 'isnull': 'False'}),
             )
-        ]
+        super().__init__(field, request, params, model, model_admin, field_path)
 
-    def get_schema_operation_parameters(self, view):
-        return [
-            {
-                'name': self.ordering_param,
-                'required': False,
-                'in': 'query',
-                'description': force_str(self.ordering_description),
-                'schema': {
-                    'type': 'string',
-                },
-            },
-        ]
+    def expected_parameters(self):
+        params = [self.lookup_kwarg_since, self.lookup_kwarg_until]
+        if self.field.null:
+            params.append(self.lookup_kwarg_isnull)
+        return params
+
+    def choices(self, changelist):
+        for title, param_dict in self.links:
+            yield {
+                'selected': self.date_params == param_dict,
+                'query_string': changelist.get_query_string(param_dict, [self.field_generic]),
+                'display': title,
+            }
+
+
+FieldListFilter.register(
+    lambda f: isinstance(f, models.DateField), DateFieldListFilter)
+
+
+# This should be registered last, because it's a last resort. For example,
+# if a field is eligible to use the BooleanFieldListFilter, that'd be much
+# more appropriate, and the AllValuesFieldListFilter won't get used for it.
+class AllValuesFieldListFilter(FieldListFilter):
+    def __init__(self, field, request, params, model, model_admin, field_path):
+        self.lookup_kwarg = field_path
+        self.lookup_kwarg_isnull = '%s__isnull' % field_path
+        self.lookup_val = params.get(self.lookup_kwarg)
+        self.lookup_val_isnull = params.get(self.lookup_kwarg_isnull)
+        self.empty_value_display = model_admin.get_empty_value_display()
+        parent_model, reverse_path = reverse_field_path(model, field_path)
+        # Obey parent ModelAdmin queryset when deciding which options to show
+        if model == parent_model:
+            queryset = model_admin.get_queryset(request)
+        else:
+            queryset = parent_model._default_manager.all()
+        self.lookup_choices = queryset.distinct().order_by(field.name).values_list(field.name, flat=True)
+        super().__init__(field, request, params, model, model_admin, field_path)
+
+    def expected_parameters(self):
+        return [self.lookup_kwarg, self.lookup_kwarg_isnull]
+
+    def choices(self, changelist):
+        yield {
+            'selected': self.lookup_val is None and self.lookup_val_isnull is None,
+            'query_string': changelist.get_query_string(remove=[self.lookup_kwarg, self.lookup_kwarg_isnull]),
+            'display': _('All'),
+        }
+        include_none = False
+        for val in self.lookup_choices:
+            if val is None:
+                include_none = True
+                continue
+            val = str(val)
+            yield {
+                'selected': self.lookup_val == val,
+                'query_string': changelist.get_query_string({self.lookup_kwarg: val}, [self.lookup_kwarg_isnull]),
+                'display': val,
+            }
+        if include_none:
+            yield {
+                'selected': bool(self.lookup_val_isnull),
+                'query_string': changelist.get_query_string({self.lookup_kwarg_isnull: 'True'}, [self.lookup_kwarg]),
+                'display': self.empty_value_display,
+            }
+
+
+FieldListFilter.register(lambda f: True, AllValuesFieldListFilter)
+
+
+class RelatedOnlyFieldListFilter(RelatedFieldListFilter):
+    def field_choices(self, field, request, model_admin):
+        pk_qs = model_admin.get_queryset(request).distinct().values_list('%s__pk' % self.field_path, flat=True)
+        return field.get_choices(include_blank=False, limit_choices_to={'pk__in': pk_qs})

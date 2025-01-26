@@ -22,7 +22,7 @@ from __future__ import annotations
 import itertools
 import os
 import struct
-from typing import IO, Any, cast
+from custom_typing import IO, Any, cast
 
 from . import (
     Image,

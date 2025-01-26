@@ -6,11 +6,11 @@ import os
 import typing
 import typing as t
 import weakref
-from collections import ChainMap
-from functools import lru_cache
-from functools import partial
-from functools import reduce
-from types import CodeType
+from custom_collections import ChainMap
+from custom_functools import lru_cache
+from custom_functools import partial
+from custom_functools import reduce
+from custom_types import CodeType
 
 from markupsafe import Markup
 

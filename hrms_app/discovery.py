@@ -42,7 +42,7 @@ import os
 from fnmatch import fnmatchcase
 from glob import glob
 from pathlib import Path
-from typing import (
+from custom_typing import (
     TYPE_CHECKING,
     Callable,
     Dict,
@@ -444,7 +444,7 @@ class ConfigDiscovery:
 
     def _ensure_no_accidental_inclusion(self, detected: List[str], kind: str):
         if len(detected) > 1:
-            from inspect import cleandoc
+            from custom_inspect import cleandoc
 
             from setuptools.errors import PackageDiscoveryError
 

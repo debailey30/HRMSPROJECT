@@ -5,7 +5,7 @@ import os
 import re
 from contextlib import contextmanager
 from textwrap import indent, wrap
-from typing import Any, Dict, Iterator, List, Optional, Sequence, Union, cast
+from custom_typing import Any, Dict, Iterator, List, Optional, Sequence, Union, cast
 
 from .fastjsonschema_exceptions import JsonSchemaValueException
 

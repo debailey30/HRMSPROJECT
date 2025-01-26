@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional
-from warnings import warn
+from custom_typing import TYPE_CHECKING, Any, Optional
+from custom_warnings import warn
 
 from .api import from_bytes
 from .constant import CHARDET_CORRESPONDENCE

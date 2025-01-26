@@ -3,7 +3,7 @@ import sys
 import typing
 import warnings
 from abc import ABC, abstractmethod
-from collections import deque
+from custom_collections import deque
 from dataclasses import dataclass, field
 from datetime import timedelta
 from io import RawIOBase, UnsupportedOperation
@@ -12,8 +12,8 @@ from mmap import mmap
 from operator import length_hint
 from os import PathLike, stat
 from threading import Event, RLock, Thread
-from types import TracebackType
-from typing import (
+from custom_types import TracebackType
+from custom_typing import (
     Any,
     BinaryIO,
     Callable,
@@ -35,7 +35,7 @@ from typing import (
 )
 
 if sys.version_info >= (3, 8):
-    from typing import Literal
+    from custom_typing import Literal
 else:
     from pip._vendor.typing_extensions import Literal  # pragma: no cover
 
@@ -681,7 +681,7 @@ class TimeElapsedColumn(ProgressColumn):
         elapsed = task.finished_time if task.finished else task.elapsed
         if elapsed is None:
             return Text("-:--:--", style="progress.elapsed")
-        delta = timedelta(seconds=max(0, int(elapsed)))
+        delta = timedelta(seconds=int(elapsed))
         return Text(str(delta), style="progress.elapsed")
 
 
@@ -710,6 +710,7 @@ class TaskProgressColumn(TextColumn):
         table_column: Optional[Column] = None,
         show_speed: bool = False,
     ) -> None:
+
         self.text_format_no_percentage = text_format_no_percentage
         self.show_speed = show_speed
         super().__init__(
@@ -1113,7 +1114,7 @@ class Progress(JupyterMixin):
 
             progress = Progress(
                 SpinnerColumn(),
-                *Progress.get_default_columns(),
+                *Progress.default_columns(),
                 "Elapsed:",
                 TimeElapsedColumn(),
             )
@@ -1635,6 +1636,7 @@ class Progress(JupyterMixin):
 
 
 if __name__ == "__main__":  # pragma: no coverage
+
     import random
     import time
 
@@ -1687,6 +1689,7 @@ if __name__ == "__main__":  # pragma: no coverage
         console=console,
         transient=False,
     ) as progress:
+
         task1 = progress.add_task("[red]Downloading", total=1000)
         task2 = progress.add_task("[green]Processing", total=1000)
         task3 = progress.add_task("[yellow]Thinking", total=None)

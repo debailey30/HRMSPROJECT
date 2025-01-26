@@ -16,7 +16,7 @@ import io
 import struct
 import sys
 from enum import IntEnum, IntFlag
-from typing import IO
+from custom_typing import IO
 
 from . import Image, ImageFile, ImagePalette
 from ._binary import i32le as i32

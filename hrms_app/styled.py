@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from custom_typing import TYPE_CHECKING
 
 from .measure import Measurement
 from .segment import Segment

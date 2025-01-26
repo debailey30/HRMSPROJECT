@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import os
 import typing as t
-from collections import defaultdict
-from functools import update_wrapper
+from custom_collections import defaultdict
+from custom_functools import update_wrapper
 
 from .. import typing as ft
 from .scaffold import _endpoint_from_view_func

@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 import io
-from typing import BinaryIO, Callable
+from custom_typing import BinaryIO, Callable
 
 from . import FontFile, Image
 from ._binary import i8

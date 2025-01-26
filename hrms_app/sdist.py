@@ -5,7 +5,7 @@ Implements the Distutils 'sdist' command (create a source distribution)."""
 import os
 import sys
 from glob import glob
-from warnings import warn
+from custom_warnings import warn
 
 from distutils.core import Command
 from distutils import dir_util

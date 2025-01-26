@@ -5,7 +5,7 @@
 import re
 import string
 import urllib.parse
-from typing import List, Optional as TOptional, Set
+from custom_typing import List, Optional as TOptional, Set
 
 from setuptools.extern.pyparsing import (  # noqa
     Combine,

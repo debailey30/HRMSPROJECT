@@ -6,7 +6,7 @@ import tempfile
 import traceback
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
-from typing import (
+from custom_typing import (
     Any,
     Callable,
     Dict,
@@ -208,7 +208,7 @@ class TempDirectory:
 
         if self.ignore_cleanup_errors:
             try:
-                # first try with @retry; retrying to handle ephemeral errors
+                # first try with tenacity; retrying to handle ephemeral errors
                 rmtree(self._path, ignore_errors=False)
             except OSError:
                 # last pass ignore/log all errors

@@ -1,4 +1,4 @@
-from typing import cast, List, Optional, Tuple, TYPE_CHECKING, Union
+from custom_typing import cast, List, Optional, Tuple, TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
     from .console import (

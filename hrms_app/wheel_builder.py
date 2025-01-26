@@ -5,7 +5,7 @@ import logging
 import os.path
 import re
 import shutil
-from typing import Iterable, List, Optional, Tuple
+from custom_typing import Iterable, List, Optional, Tuple
 
 from pip._vendor.packaging.utils import canonicalize_name, canonicalize_version
 from pip._vendor.packaging.version import InvalidVersion, Version
@@ -70,7 +70,7 @@ def _should_build(
 
     if req.editable:
         # we only build PEP 660 editable requirements
-        return req.supports_pyproject_editable
+        return req.supports_pyproject_editable()
 
     return True
 

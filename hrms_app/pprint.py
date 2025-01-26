@@ -20,10 +20,10 @@ import dataclasses as _dataclasses
 from io import StringIO as _StringIO
 import re
 import types as _types
-from typing import Any
-from typing import Callable
-from typing import IO
-from typing import Iterator
+from custom_typing import Any
+from custom_typing import Callable
+from custom_typing import IO
+from custom_typing import Iterator
 
 
 class _safe_key:

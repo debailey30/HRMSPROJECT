@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
+from custom_typing import Any
 
 from . import Image
 

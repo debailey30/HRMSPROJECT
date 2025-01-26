@@ -27,7 +27,7 @@ import re
 import subprocess
 import sys
 import tempfile
-from typing import IO
+from custom_typing import IO
 
 from . import Image, ImageFile
 from ._binary import i32le as i32

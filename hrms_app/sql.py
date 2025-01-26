@@ -1,43 +1,23 @@
+# -*- coding: utf-8 -*-
 #
-# Copyright (C) 2009-2020 the sqlparse authors and contributors
+# Copyright (C) 2009-2018 the sqlparse authors and contributors
 # <see AUTHORS file>
 #
 # This module is part of python-sqlparse and is released under
 # the BSD License: https://opensource.org/licenses/BSD-3-Clause
 
 """This module contains classes representing syntactical elements of SQL."""
+from __future__ import print_function
 
 import re
 
 from sqlparse import tokens as T
-from sqlparse.exceptions import SQLParseError
+from sqlparse.compat import string_types, text_type, unicode_compatible
 from sqlparse.utils import imt, remove_quotes
 
 
-class NameAliasMixin:
-    """Implements get_real_name and get_alias."""
-
-    def get_real_name(self):
-        """Returns the real name (object name) of this identifier."""
-        # a.b
-        dot_idx, _ = self.token_next_by(m=(T.Punctuation, '.'))
-        return self._get_first_name(dot_idx, real_name=True)
-
-    def get_alias(self):
-        """Returns the alias for this identifier or ``None``."""
-
-        # "name AS alias"
-        kw_idx, kw = self.token_next_by(m=(T.Keyword, 'AS'))
-        if kw is not None:
-            return self._get_first_name(kw_idx + 1, keywords=True)
-
-        # "name alias" or "complicated column expression alias"
-        _, ws = self.token_next_by(t=T.Whitespace)
-        if len(self.tokens) > 2 and ws is not None:
-            return self._get_first_name(reverse=True)
-
-
-class Token:
+@unicode_compatible
+class Token(object):
     """Base class for all other classes in this module.
 
     It represents a single token and has two instance attributes:
@@ -46,17 +26,16 @@ class Token:
     """
 
     __slots__ = ('value', 'ttype', 'parent', 'normalized', 'is_keyword',
-                 'is_group', 'is_whitespace', 'is_newline')
+                 'is_group', 'is_whitespace')
 
     def __init__(self, ttype, value):
-        value = str(value)
+        value = text_type(value)
         self.value = value
         self.ttype = ttype
         self.parent = None
         self.is_group = False
         self.is_keyword = ttype in T.Keyword
         self.is_whitespace = self.ttype in T.Whitespace
-        self.is_newline = self.ttype in T.Newline
         self.normalized = value.upper() if self.is_keyword else value
 
     def __str__(self):
@@ -70,15 +49,15 @@ class Token:
         cls = self._get_repr_name()
         value = self._get_repr_value()
 
-        q = '"' if value.startswith("'") and value.endswith("'") else "'"
-        return "<{cls} {q}{value}{q} at 0x{id:2X}>".format(
+        q = u'"' if value.startswith("'") and value.endswith("'") else u"'"
+        return u"<{cls} {q}{value}{q} at 0x{id:2X}>".format(
             id=id(self), **locals())
 
     def _get_repr_name(self):
         return str(self.ttype).split('.')[-1]
 
     def _get_repr_value(self):
-        raw = str(self)
+        raw = text_type(self)
         if len(raw) > 7:
             raw = raw[:6] + '...'
         return re.sub(r'\s+', ' ', raw)
@@ -103,7 +82,7 @@ class Token:
         if not type_matched or values is None:
             return type_matched
 
-        if isinstance(values, str):
+        if isinstance(values, string_types):
             values = (values,)
 
         if regex:
@@ -148,6 +127,7 @@ class Token:
         return False
 
 
+@unicode_compatible
 class TokenList(Token):
     """A group of tokens.
 
@@ -159,12 +139,12 @@ class TokenList(Token):
 
     def __init__(self, tokens=None):
         self.tokens = tokens or []
-        [setattr(token, 'parent', self) for token in self.tokens]
-        super().__init__(None, str(self))
+        [setattr(token, 'parent', self) for token in tokens]
+        super(TokenList, self).__init__(None, text_type(self))
         self.is_group = True
 
     def __str__(self):
-        return ''.join(token.value for token in self.flatten())
+        return u''.join(token.value for token in self.flatten())
 
     # weird bug
     # def __len__(self):
@@ -187,14 +167,14 @@ class TokenList(Token):
             value = token._get_repr_value()
 
             last = idx == (token_count - 1)
-            pre = '`- ' if last else '|- '
+            pre = u'`- ' if last else u'|- '
 
-            q = '"' if value.startswith("'") and value.endswith("'") else "'"
-            print("{_pre}{pre}{idx} {cls} {q}{value}{q}"
+            q = u'"' if value.startswith("'") and value.endswith("'") else u"'"
+            print(u"{_pre}{pre}{idx} {cls} {q}{value}{q}"
                   .format(**locals()), file=f)
 
             if token.is_group and (max_depth is None or depth < max_depth):
-                parent_pre = '   ' if last else '|  '
+                parent_pre = u'   ' if last else u'|  '
                 token._pprint_tree(max_depth, depth + 1, f, _pre + parent_pre)
 
     def get_token_at_offset(self, offset):
@@ -211,14 +191,12 @@ class TokenList(Token):
 
         This method is recursively called for all child tokens.
         """
-        try:
-            for token in self.tokens:
-                if token.is_group:
-                    yield from token.flatten()
-                else:
-                    yield token
-        except RecursionError as err:
-            raise SQLParseError('Maximum recursion depth exceeded') from err
+        for token in self.tokens:
+            if token.is_group:
+                for item in token.flatten():
+                    yield item
+            else:
+                yield token
 
     def get_sublists(self):
         for token in self.tokens:
@@ -239,16 +217,16 @@ class TokenList(Token):
 
         if reverse:
             assert end is None
-            indexes = range(start - 2, -1, -1)
+            for idx in range(start - 2, -1, -1):
+                token = self.tokens[idx]
+                for func in funcs:
+                    if func(token):
+                        return idx, token
         else:
-            if end is None:
-                end = len(self.tokens)
-            indexes = range(start, end)
-        for idx in indexes:
-            token = self.tokens[idx]
-            for func in funcs:
-                if func(token):
-                    return idx, token
+            for idx, token in enumerate(self.tokens[start:end], start=start):
+                for func in funcs:
+                    if func(token):
+                        return idx, token
         return None, None
 
     def token_first(self, skip_ws=True, skip_cm=False):
@@ -261,14 +239,15 @@ class TokenList(Token):
         ignored too.
         """
         # this on is inconsistent, using Comment instead of T.Comment...
-        def matcher(tk):
-            return not ((skip_ws and tk.is_whitespace)
-                        or (skip_cm and imt(tk, t=T.Comment, i=Comment)))
-        return self._token_matching(matcher)[1]
+        funcs = lambda tk: not ((skip_ws and tk.is_whitespace)
+                                or (skip_cm and imt(tk,
+                                                    t=T.Comment, i=Comment)))
+        return self._token_matching(funcs)[1]
 
     def token_next_by(self, i=None, m=None, t=None, idx=-1, end=None):
+        funcs = lambda tk: imt(tk, i, m, t)
         idx += 1
-        return self._token_matching(lambda tk: imt(tk, i, m, t), idx, end)
+        return self._token_matching(funcs, idx, end)
 
     def token_not_matching(self, funcs, idx):
         funcs = (funcs,) if not isinstance(funcs, (list, tuple)) else funcs
@@ -298,11 +277,10 @@ class TokenList(Token):
         if idx is None:
             return None, None
         idx += 1  # alot of code usage current pre-compensates for this
-
-        def matcher(tk):
-            return not ((skip_ws and tk.is_whitespace)
-                        or (skip_cm and imt(tk, t=T.Comment, i=Comment)))
-        return self._token_matching(matcher, idx, reverse=_reverse)
+        funcs = lambda tk: not ((skip_ws and tk.is_whitespace)
+                                or (skip_cm and imt(tk,
+                                                    t=T.Comment, i=Comment)))
+        return self._token_matching(funcs, idx, reverse=_reverse)
 
     def token_index(self, token, start=0):
         """Return list index of token."""
@@ -327,7 +305,7 @@ class TokenList(Token):
             grp = start
             grp.tokens.extend(subtokens)
             del self.tokens[start_idx + 1:end_idx]
-            grp.value = str(start)
+            grp.value = text_type(start)
         else:
             subtokens = self.tokens[start_idx:end_idx]
             grp = grp_cls(subtokens)
@@ -363,7 +341,16 @@ class TokenList(Token):
 
     def get_alias(self):
         """Returns the alias for this identifier or ``None``."""
-        return None
+
+        # "name AS alias"
+        kw_idx, kw = self.token_next_by(m=(T.Keyword, 'AS'))
+        if kw is not None:
+            return self._get_first_name(kw_idx + 1, keywords=True)
+
+        # "name alias" or "complicated column expression alias"
+        _, ws = self.token_next_by(t=T.Whitespace)
+        if len(self.tokens) > 2 and ws is not None:
+            return self._get_first_name(reverse=True)
 
     def get_name(self):
         """Returns the name of this identifier.
@@ -376,7 +363,9 @@ class TokenList(Token):
 
     def get_real_name(self):
         """Returns the real name (object name) of this identifier."""
-        return None
+        # a.b
+        dot_idx, _ = self.token_next_by(m=(T.Punctuation, '.'))
+        return self._get_first_name(dot_idx, real_name=True)
 
     def get_parent_name(self):
         """Return name of the parent object if any.
@@ -418,34 +407,33 @@ class Statement(TokenList):
         Whitespaces and comments at the beginning of the statement
         are ignored.
         """
-        token = self.token_first(skip_cm=True)
-        if token is None:
+        first_token = self.token_first(skip_cm=True)
+        if first_token is None:
             # An "empty" statement that either has not tokens at all
             # or only whitespace tokens.
             return 'UNKNOWN'
 
-        elif token.ttype in (T.Keyword.DML, T.Keyword.DDL):
-            return token.normalized
+        elif first_token.ttype in (T.Keyword.DML, T.Keyword.DDL):
+            return first_token.normalized
 
-        elif token.ttype == T.Keyword.CTE:
+        elif first_token.ttype == T.Keyword.CTE:
             # The WITH keyword should be followed by either an Identifier or
             # an IdentifierList containing the CTE definitions;  the actual
             # DML keyword (e.g. SELECT, INSERT) will follow next.
-            tidx = self.token_index(token)
-            while tidx is not None:
-                tidx, token = self.token_next(tidx, skip_ws=True)
-                if isinstance(token, (Identifier, IdentifierList)):
-                    tidx, token = self.token_next(tidx, skip_ws=True)
+            fidx = self.token_index(first_token)
+            tidx, token = self.token_next(fidx, skip_ws=True)
+            if isinstance(token, (Identifier, IdentifierList)):
+                _, dml_keyword = self.token_next(tidx, skip_ws=True)
 
-                    if token is not None \
-                            and token.ttype == T.Keyword.DML:
-                        return token.normalized
+                if dml_keyword is not None \
+                        and dml_keyword.ttype == T.Keyword.DML:
+                    return dml_keyword.normalized
 
         # Hmm, probably invalid syntax, so return unknown.
         return 'UNKNOWN'
 
 
-class Identifier(NameAliasMixin, TokenList):
+class Identifier(TokenList):
     """Represents an identifier.
 
     Identifiers may have aliases or typecasts.
@@ -487,13 +475,6 @@ class IdentifierList(TokenList):
         for token in self.tokens:
             if not (token.is_whitespace or token.match(T.Punctuation, ',')):
                 yield token
-
-
-class TypedLiteral(TokenList):
-    """A typed literal, such as "date '2001-09-28'" or "interval '2 hours'"."""
-    M_OPEN = [(T.Name.Builtin, None), (T.Keyword, "TIMESTAMP")]
-    M_CLOSE = T.String.Single, None
-    M_EXTEND = T.Keyword, ("DAY", "HOUR", "MINUTE", "MONTH", "SECOND", "YEAR")
 
 
 class Parenthesis(TokenList):
@@ -559,11 +540,6 @@ class Where(TokenList):
         'HAVING', 'RETURNING', 'INTO')
 
 
-class Over(TokenList):
-    """An OVER clause."""
-    M_OPEN = T.Keyword, 'OVER'
-
-
 class Having(TokenList):
     """A HAVING clause."""
     M_OPEN = T.Keyword, 'HAVING'
@@ -623,27 +599,18 @@ class Case(TokenList):
         return ret
 
 
-class Function(NameAliasMixin, TokenList):
+class Function(TokenList):
     """A function or procedure call."""
 
     def get_parameters(self):
         """Return a list of parameters."""
-        parenthesis = self.token_next_by(i=Parenthesis)[1]
-        result = []
+        parenthesis = self.tokens[-1]
         for token in parenthesis.tokens:
             if isinstance(token, IdentifierList):
                 return token.get_identifiers()
-            elif imt(token, i=(Function, Identifier, TypedLiteral),
-                     t=T.Literal):
-                result.append(token)
-        return result
-
-    def get_window(self):
-        """Return the window if it exists."""
-        over_clause = self.token_next_by(i=Over)
-        if not over_clause:
-            return None
-        return over_clause[1].tokens[-1]
+            elif imt(token, i=(Function, Identifier), t=T.Literal):
+                return [token, ]
+        return []
 
 
 class Begin(TokenList):

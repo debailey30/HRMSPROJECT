@@ -1,6 +1,6 @@
-from collections import defaultdict
-from logging import getLogger
-from typing import Any, DefaultDict
+from custom_collections import defaultdict
+from custom_logging import getLogger
+from custom_typing import Any, DefaultDict
 
 from pip._vendor.resolvelib.reporters import BaseReporter
 
@@ -66,7 +66,6 @@ class PipDebuggingReporter(BaseReporter):
 
     def ending_round(self, index: int, state: Any) -> None:
         logger.info("Reporter.ending_round(%r, state)", index)
-        logger.debug("Reporter.ending_round(%r, %r)", index, state)
 
     def ending(self, state: Any) -> None:
         logger.info("Reporter.ending(%r)", state)

@@ -21,7 +21,7 @@
 from __future__ import annotations
 
 import re
-from typing import IO
+from custom_typing import IO
 
 from . import Image, ImageFile
 

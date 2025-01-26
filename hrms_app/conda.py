@@ -39,7 +39,7 @@ import fnmatch
 import json
 import sys
 from pathlib import Path
-from typing import Iterable, List
+from custom_typing import Iterable, List
 from importlib.metadata import PackagePath as _PackagePath
 
 from PyInstaller import compat
@@ -201,7 +201,7 @@ def walk_dependency_tree(initial: str, excludes: Iterable[str] | None = None):
         excludes = set(excludes)
 
     # Rather than use true recursion, mimic it with a to-do queue.
-    from collections import deque
+    from custom_collections import deque
     done = {}
     names_to_do = deque([initial])
 

@@ -1,107 +1,107 @@
-"""
-The Response class in REST framework is similar to HTTPResponse, except that
-it is initialized with unrendered data, instead of a pre-rendered string.
+from __future__ import absolute_import
 
-The appropriate renderer is called during Django's template response rendering.
-"""
-from http.client import responses
+from email.errors import MultipartInvariantViolationDefect, StartBoundaryNotFoundDefect
 
-from django.template.response import SimpleTemplateResponse
-
-from rest_framework.serializers import Serializer
+from ..exceptions import HeaderParsingError
+from ..packages.six.moves import http_client as httplib
 
 
-class Response(SimpleTemplateResponse):
+def is_fp_closed(obj):
     """
-    An HttpResponse that allows its data to be rendered into
-    arbitrary media types.
+    Checks whether a given file-like object is closed.
+
+    :param obj:
+        The file-like object to check.
     """
 
-    def __init__(self, data=None, status=None,
-                 template_name=None, headers=None,
-                 exception=False, content_type=None):
-        """
-        Alters the init arguments slightly.
-        For example, drop 'template_name', and instead use 'data'.
+    try:
+        # Check `isclosed()` first, in case Python3 doesn't set `closed`.
+        # GH Issue #928
+        return obj.isclosed()
+    except AttributeError:
+        pass
 
-        Setting 'renderer' and 'media_type' will typically be deferred,
-        For example being set automatically by the `APIView`.
-        """
-        super().__init__(None, status=status)
+    try:
+        # Check via the official file-like-object way.
+        return obj.closed
+    except AttributeError:
+        pass
 
-        if isinstance(data, Serializer):
-            msg = (
-                'You passed a Serializer instance as data, but '
-                'probably meant to pass serialized `.data` or '
-                '`.error`. representation.'
+    try:
+        # Check if the object is a container for another file-like object that
+        # gets released on exhaustion (e.g. HTTPResponse).
+        return obj.fp is None
+    except AttributeError:
+        pass
+
+    raise ValueError("Unable to determine whether fp is closed.")
+
+
+def assert_header_parsing(headers):
+    """
+    Asserts whether all headers have been successfully parsed.
+    Extracts encountered errors from the result of parsing headers.
+
+    Only works on Python 3.
+
+    :param http.client.HTTPMessage headers: Headers to verify.
+
+    :raises urllib3.exceptions.HeaderParsingError:
+        If parsing errors are found.
+    """
+
+    # This will fail silently if we pass in the wrong kind of parameter.
+    # To make debugging easier add an explicit check.
+    if not isinstance(headers, httplib.HTTPMessage):
+        raise TypeError("expected httplib.Message, got {0}.".format(type(headers)))
+
+    defects = getattr(headers, "defects", None)
+    get_payload = getattr(headers, "get_payload", None)
+
+    unparsed_data = None
+    if get_payload:
+        # get_payload is actually email.message.Message.get_payload;
+        # we're only interested in the result if it's not a multipart message
+        if not headers.is_multipart():
+            payload = get_payload()
+
+            if isinstance(payload, (bytes, str)):
+                unparsed_data = payload
+    if defects:
+        # httplib is assuming a response body is available
+        # when parsing headers even when httplib only sends
+        # header data to parse_headers() This results in
+        # defects on multipart responses in particular.
+        # See: https://github.com/urllib3/urllib3/issues/800
+
+        # So we ignore the following defects:
+        # - StartBoundaryNotFoundDefect:
+        #     The claimed start boundary was never found.
+        # - MultipartInvariantViolationDefect:
+        #     A message claimed to be a multipart but no subparts were found.
+        defects = [
+            defect
+            for defect in defects
+            if not isinstance(
+                defect, (StartBoundaryNotFoundDefect, MultipartInvariantViolationDefect)
             )
-            raise AssertionError(msg)
+        ]
 
-        self.data = data
-        self.template_name = template_name
-        self.exception = exception
-        self.content_type = content_type
+    if defects or unparsed_data:
+        raise HeaderParsingError(defects=defects, unparsed_data=unparsed_data)
 
-        if headers:
-            for name, value in headers.items():
-                self[name] = value
 
-    # Allow generic typing checking for responses.
-    def __class_getitem__(cls, *args, **kwargs):
-        return cls
+def is_response_to_head(response):
+    """
+    Checks whether the request of a response has been a HEAD-request.
+    Handles the quirks of AppEngine.
 
-    @property
-    def rendered_content(self):
-        renderer = getattr(self, 'accepted_renderer', None)
-        accepted_media_type = getattr(self, 'accepted_media_type', None)
-        context = getattr(self, 'renderer_context', None)
-
-        assert renderer, ".accepted_renderer not set on Response"
-        assert accepted_media_type, ".accepted_media_type not set on Response"
-        assert context is not None, ".renderer_context not set on Response"
-        context['response'] = self
-
-        media_type = renderer.media_type
-        charset = renderer.charset
-        content_type = self.content_type
-
-        if content_type is None and charset is not None:
-            content_type = "{}; charset={}".format(media_type, charset)
-        elif content_type is None:
-            content_type = media_type
-        self['Content-Type'] = content_type
-
-        ret = renderer.render(self.data, accepted_media_type, context)
-        if isinstance(ret, str):
-            assert charset, (
-                'renderer returned unicode, and did not specify '
-                'a charset value.'
-            )
-            return ret.encode(charset)
-
-        if not ret:
-            del self['Content-Type']
-
-        return ret
-
-    @property
-    def status_text(self):
-        """
-        Returns reason text corresponding to our HTTP response status code.
-        Provided for convenience.
-        """
-        return responses.get(self.status_code, '')
-
-    def __getstate__(self):
-        """
-        Remove attributes from the response that shouldn't be cached.
-        """
-        state = super().__getstate__()
-        for key in (
-            'accepted_renderer', 'renderer_context', 'resolver_match',
-            'client', 'request', 'json', 'wsgi_request'
-        ):
-            if key in state:
-                del state[key]
-        state['_closable_objects'] = []
-        return state
+    :param http.client.HTTPResponse response:
+        Response to check if the originating request
+        used 'HEAD' as a method.
+    """
+    # FIXME: Can we do this somehow without accessing private httplib _method?
+    method = response._method
+    if isinstance(method, int):  # Platform-specific: Appengine
+        return method == 3
+    return method.upper() == "HEAD"

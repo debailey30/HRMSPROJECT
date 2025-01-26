@@ -1,13 +1,13 @@
 /********************************************************************************
-** Form generated from reading UI file 'LoginDialograyBMZ.ui'
+** Form generated from reading UI file 'LoginDialog.ui'
 **
 ** Created by: Qt User Interface Compiler version 6.8.1
 **
 ** WARNING! All changes made in this file will be lost when recompiling UI file!
 ********************************************************************************/
 
-#ifndef LOGINDIALOGRAYBMZ_H
-#define LOGINDIALOGRAYBMZ_H
+#ifndef UI_LOGINDIALOG_H
+#define UI_LOGINDIALOG_H
 
 #include <QtCore/QVariant>
 #include <QtWidgets/QApplication>
@@ -92,4 +92,4 @@ namespace Ui {
 
 QT_END_NAMESPACE
 
-#endif // LOGINDIALOGRAYBMZ_H
+#endif // UI_LOGINDIALOG_H

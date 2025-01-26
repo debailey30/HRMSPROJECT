@@ -1,5 +1,5 @@
 import abc
-from typing import BinaryIO, Iterable, Text
+from custom_typing import BinaryIO, Iterable, Text
 
 from ._compat import runtime_checkable, Protocol
 

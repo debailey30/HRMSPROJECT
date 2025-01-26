@@ -5,7 +5,7 @@ import re
 import typing as t
 from dataclasses import dataclass
 from string import Template
-from types import CodeType
+from custom_types import CodeType
 from urllib.parse import quote
 
 from ..datastructures import iter_multi_items

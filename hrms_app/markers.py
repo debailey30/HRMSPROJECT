@@ -6,7 +6,7 @@ import operator
 import os
 import platform
 import sys
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from custom_typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from setuptools.extern.pyparsing import (  # noqa: N817
     Forward,

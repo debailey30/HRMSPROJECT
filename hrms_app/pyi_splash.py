@@ -48,7 +48,7 @@ except ImportError:
 
 try:
     # The user might have excluded functools from imports.
-    from functools import update_wrapper
+    from custom_functools import update_wrapper
 except ImportError:
     update_wrapper = None
 

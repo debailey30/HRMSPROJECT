@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import IO
+from custom_typing import IO
 
 from . import Image, ImageFile, ImagePalette
 from ._binary import i16le as i16

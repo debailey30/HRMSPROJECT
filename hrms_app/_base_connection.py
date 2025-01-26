@@ -28,7 +28,7 @@ class _ResponseOptions(typing.NamedTuple):
 
 if typing.TYPE_CHECKING:
     import ssl
-    from typing import Protocol
+    from custom_typing import Protocol
 
     from .response import BaseHTTPResponse
 

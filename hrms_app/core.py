@@ -3,7 +3,7 @@
 #
 import os
 import typing
-from typing import (
+from custom_typing import (
     NamedTuple,
     Union,
     Callable,
@@ -26,7 +26,7 @@ from collections.abc import Iterable
 import traceback
 import types
 from operator import itemgetter
-from functools import wraps
+from custom_functools import wraps
 from threading import RLock
 from pathlib import Path
 
@@ -74,7 +74,7 @@ str_type: Tuple[type, ...] = (str, bytes)
 
 
 if sys.version_info >= (3, 8):
-    from functools import cached_property
+    from custom_functools import cached_property
 else:
 
     class cached_property:

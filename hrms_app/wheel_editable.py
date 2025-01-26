@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Optional
+from custom_typing import Optional
 
 from pip._vendor.pyproject_hooks import BuildBackendHookCaller, HookMissing
 

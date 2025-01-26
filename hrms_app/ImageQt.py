@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import sys
 from io import BytesIO
-from typing import TYPE_CHECKING, Any, Callable, Union
+from custom_typing import TYPE_CHECKING, Any, Callable, Union
 
 from . import Image
 from ._util import is_path

@@ -18,7 +18,7 @@
 ##
 from __future__ import annotations
 
-from typing import NamedTuple
+from custom_typing import NamedTuple
 
 
 class _TagInfo(NamedTuple):

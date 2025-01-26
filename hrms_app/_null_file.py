@@ -1,5 +1,5 @@
-from types import TracebackType
-from typing import IO, Iterable, Iterator, List, Optional, Type
+from custom_types import TracebackType
+from custom_typing import IO, Iterable, Iterator, List, Optional, Type
 
 
 class NullFile(IO[str]):

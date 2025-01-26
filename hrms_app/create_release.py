@@ -5,7 +5,7 @@ import os
 import re
 import subprocess
 import sys
-from collections import OrderedDict
+from custom_collections import OrderedDict
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(script_dir)

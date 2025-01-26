@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import collections.abc as cabc
 import typing as t
-from inspect import cleandoc
+from custom_inspect import cleandoc
 
 from .mixins import ImmutableDictMixin
 from .structures import CallbackDict

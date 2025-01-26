@@ -1,56 +1,26 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+        {
+            "name": "(Windows) Attach",
+            "type": "cppvsdbg",
+            "request": "attach",
+            "processId": "${command:pickProcess}",
+            "visualizerFile": "c:\\Users\\DeeAnn\\AppData\\Roaming\\Code\\User\\workspaceStorage\\6932c99dce01139af0b5e9d060a01d93\\tonka3000.qtvsctools\\qt.natvis.xml"
+        },
         {
             "name": "(Windows) Launch",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "C:\\Users\\DeeAnn\\Desktop\\HRMSPROJECT\\build\\Debug\\HRMSPROJECT.exe",
-            "args": [],
-            "stopAtEntry": false,
-            "cwd": "${fileDirname}",
-            "environment": [],
-            "console": "externalTerminal",
-            "visualizerFile": "c:\\Users\\DeeAnn\\AppData\\Roaming\\Code\\User\\workspaceStorage\\6932c99dce01139af0b5e9d060a01d93\\tonka3000.qtvsctools\\qt.natvis.xml"
-        },
-        {
-            "name": "Run Qt Application",
-            "type": "cppvsdbg",
-            "request": "launch",
-            "program": "C:\\Users\\DeeAnn\\Desktop\\HRMSPROJECT\\build\\Debug\\HRMSPROJECT.exe",
+            "program": "${workspaceFolder}/build/Debug/MyCppProject.exe",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
-            "console": "externalTerminal",
+            "console": "integratedTerminal",
+            "preLaunchTask": "CMake Build",
+            "internalConsoleOptions": "openOnSessionStart",
             "visualizerFile": "c:\\Users\\DeeAnn\\AppData\\Roaming\\Code\\User\\workspaceStorage\\6932c99dce01139af0b5e9d060a01d93\\tonka3000.qtvsctools\\qt.natvis.xml"
-        },
-        {
-            "type": "debugpy",
-            "request": "launch",
-            "name": "Django",
-            "program": "${workspaceFolder}/manage.py",
-            "args": [
-                "runserver",
-                "--noreload"
-            ],
-            "django": true,
-            "justMyCode": true
-        },
-        {
-            "name": "Run Extension",
-            "type": "extensionHost",
-            "request": "launch",
-            "args": [
-                "--extensionDevelopmentPath=${workspaceFolder}"
-            ],
-            "outFiles": [
-                "${workspaceFolder}/out/**/*.js"
-            ],
-            "preLaunchTask": "npm: compile"
         }
     ]
 }

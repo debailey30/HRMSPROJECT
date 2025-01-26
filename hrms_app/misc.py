@@ -1,229 +1,783 @@
-#-----------------------------------------------------------------------------
-# Copyright (c) 2013-2023, PyInstaller Development Team.
-#
-# Distributed under the terms of the GNU General Public License (version 2
-# or later) with exception for distributing the bootloader.
-#
-# The full license is in the file COPYING.txt, distributed with this software.
-#
-# SPDX-License-Identifier: (GPL-2.0-or-later WITH Bootloader-exception)
-#-----------------------------------------------------------------------------
-"""
-This module contains miscellaneous functions that do not fit anywhere else.
-"""
-
-import glob
-import os
-import pprint
-import codecs
-import re
-import tokenize
+import contextlib
+import errno
+import getpass
+import hashlib
 import io
-import pathlib
+import logging
+import os
+import posixpath
+import shutil
+import stat
+import sys
+import sysconfig
+import urllib.parse
+from custom_functools import partial
+from io import StringIO
+from itertools import filterfalse, tee, zip_longest
+from pathlib import Path
+from custom_types import FunctionType, TracebackType
+from custom_typing import (
+    Any,
+    BinaryIO,
+    Callable,
+    ContextManager,
+    Dict,
+    Generator,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    TextIO,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+    cast,
+)
 
-from PyInstaller import log as logging
-from PyInstaller.compat import is_win
+from pip._vendor.packaging.requirements import Requirement
+from pip._vendor.pyproject_hooks import BuildBackendHookCaller
+from pip._vendor.tenacity import retry, stop_after_delay, wait_fixed
+
+from pip import __version__
+from pip._internal.exceptions import CommandError, ExternallyManagedEnvironment
+from pip._internal.locations import get_major_minor_version
+from pip._internal.utils.compat import WINDOWS
+from pip._internal.utils.virtualenv import running_under_virtualenv
+
+__all__ = [
+    "rmtree",
+    "display_path",
+    "backup_dir",
+    "ask",
+    "splitext",
+    "format_size",
+    "is_installable_dir",
+    "normalize_path",
+    "renames",
+    "get_prog",
+    "captured_stdout",
+    "ensure_dir",
+    "remove_auth_from_url",
+    "check_externally_managed",
+    "ConfiguredBuildBackendHookCaller",
+]
 
 logger = logging.getLogger(__name__)
 
+T = TypeVar("T")
+ExcInfo = Tuple[Type[BaseException], BaseException, TracebackType]
+VersionInfo = Tuple[int, int, int]
+NetlocTuple = Tuple[str, Tuple[Optional[str], Optional[str]]]
+OnExc = Callable[[FunctionType, Path, BaseException], Any]
+OnErr = Callable[[FunctionType, Path, ExcInfo], Any]
 
-def dlls_in_subdirs(directory):
+
+def get_pip_version() -> str:
+    pip_pkg_dir = os.path.join(os.path.dirname(__file__), "..", "..")
+    pip_pkg_dir = os.path.abspath(pip_pkg_dir)
+
+    return f"pip {__version__} from {pip_pkg_dir} (python {get_major_minor_version()})"
+
+
+def normalize_version_info(py_version_info: Tuple[int, ...]) -> Tuple[int, int, int]:
     """
-    Returns a list *.dll, *.so, *.dylib in the given directory and its subdirectories.
+    Convert a tuple of ints representing a Python version to one of length
+    three.
+
+    :param py_version_info: a tuple of ints representing a Python version,
+        or None to specify no version. The tuple can have any length.
+
+    :return: a tuple of length three if `py_version_info` is non-None.
+        Otherwise, return `py_version_info` unchanged (i.e. None).
     """
-    filelist = []
-    for root, dirs, files in os.walk(directory):
-        filelist.extend(dlls_in_dir(root))
-    return filelist
+    if len(py_version_info) < 3:
+        py_version_info += (3 - len(py_version_info)) * (0,)
+    elif len(py_version_info) > 3:
+        py_version_info = py_version_info[:3]
+
+    return cast("VersionInfo", py_version_info)
 
 
-def dlls_in_dir(directory):
-    """
-    Returns a list of *.dll, *.so, *.dylib in the given directory.
-    """
-    return files_in_dir(directory, ["*.so", "*.dll", "*.dylib"])
-
-
-def files_in_dir(directory, file_patterns=None):
-    """
-    Returns a list of files in the given directory that match the given pattern.
-    """
-
-    file_patterns = file_patterns or []
-
-    files = []
-    for file_pattern in file_patterns:
-        files.extend(glob.glob(os.path.join(directory, file_pattern)))
-    return files
-
-
-def get_path_to_toplevel_modules(filename):
-    """
-    Return the path to top-level directory that contains Python modules.
-
-    It will look in parent directories for __init__.py files. The first parent directory without __init__.py is the
-    top-level directory.
-
-    Returned directory might be used to extend the PYTHONPATH.
-    """
-    curr_dir = os.path.dirname(os.path.abspath(filename))
-    pattern = '__init__.py'
-
-    # Try max. 10 levels up.
+def ensure_dir(path: str) -> None:
+    """os.path.makedirs without EEXIST."""
     try:
-        for i in range(10):
-            files = set(os.listdir(curr_dir))
-            # 'curr_dir' is still not top-level; go to parent dir.
-            if pattern in files:
-                curr_dir = os.path.dirname(curr_dir)
-            # Top-level dir found; return it.
-            else:
-                return curr_dir
-    except IOError:
+        os.makedirs(path)
+    except OSError as e:
+        # Windows can raise spurious ENOTEMPTY errors. See #6426.
+        if e.errno != errno.EEXIST and e.errno != errno.ENOTEMPTY:
+            raise
+
+
+def get_prog() -> str:
+    try:
+        prog = os.path.basename(sys.argv[0])
+        if prog in ("__main__.py", "-c"):
+            return f"{sys.executable} -m pip"
+        else:
+            return prog
+    except (AttributeError, TypeError, IndexError):
         pass
-    # No top-level directory found, or error was encountered.
-    return None
+    return "pip"
 
 
-def mtime(fnm):
+# Retry every half second for up to 3 seconds
+# Tenacity raises RetryError by default, explicitly raise the original exception
+@retry(reraise=True, stop=stop_after_delay(3), wait=wait_fixed(0.5))
+def rmtree(
+    dir: str,
+    ignore_errors: bool = False,
+    onexc: Optional[OnExc] = None,
+) -> None:
+    if ignore_errors:
+        onexc = _onerror_ignore
+    if onexc is None:
+        onexc = _onerror_reraise
+    handler: OnErr = partial(
+        # `[func, path, Union[ExcInfo, BaseException]] -> Any` is equivalent to
+        # `Union[([func, path, ExcInfo] -> Any), ([func, path, BaseException] -> Any)]`.
+        cast(Union[OnExc, OnErr], rmtree_errorhandler),
+        onexc=onexc,
+    )
+    if sys.version_info >= (3, 12):
+        # See https://docs.python.org/3.12/whatsnew/3.12.html#shutil.
+        shutil.rmtree(dir, onexc=handler)  # type: ignore
+    else:
+        shutil.rmtree(dir, onerror=handler)  # type: ignore
+
+
+def _onerror_ignore(*_args: Any) -> None:
+    pass
+
+
+def _onerror_reraise(*_args: Any) -> None:
+    raise
+
+
+def rmtree_errorhandler(
+    func: FunctionType,
+    path: Path,
+    exc_info: Union[ExcInfo, BaseException],
+    *,
+    onexc: OnExc = _onerror_reraise,
+) -> None:
+    """
+    `rmtree` error handler to 'force' a file remove (i.e. like `rm -f`).
+
+    * If a file is readonly then it's write flag is set and operation is
+      retried.
+
+    * `onerror` is the original callback from `rmtree(... onerror=onerror)`
+      that is chained at the end if the "rm -f" still fails.
+    """
     try:
-        # TODO: explain why this does not use os.path.getmtime() ?
-        #       - It is probably not used because it returns float and not int.
-        return os.stat(fnm)[8]
-    except Exception:
+        st_mode = os.stat(path).st_mode
+    except OSError:
+        # it's equivalent to os.path.exists
+        return
+
+    if not st_mode & stat.S_IWRITE:
+        # convert to read/write
+        try:
+            os.chmod(path, st_mode | stat.S_IWRITE)
+        except OSError:
+            pass
+        else:
+            # use the original function to repeat the operation
+            try:
+                func(path)
+                return
+            except OSError:
+                pass
+
+    if not isinstance(exc_info, BaseException):
+        _, exc_info, _ = exc_info
+    onexc(func, path, exc_info)
+
+
+def display_path(path: str) -> str:
+    """Gives the display value for a given path, making it relative to cwd
+    if possible."""
+    path = os.path.normcase(os.path.abspath(path))
+    if path.startswith(os.getcwd() + os.path.sep):
+        path = "." + path[len(os.getcwd()) :]
+    return path
+
+
+def backup_dir(dir: str, ext: str = ".bak") -> str:
+    """Figure out the name of a directory to back up the given dir to
+    (adding .bak, .bak2, etc)"""
+    n = 1
+    extension = ext
+    while os.path.exists(dir + extension):
+        n += 1
+        extension = ext + str(n)
+    return dir + extension
+
+
+def ask_path_exists(message: str, options: Iterable[str]) -> str:
+    for action in os.environ.get("PIP_EXISTS_ACTION", "").split():
+        if action in options:
+            return action
+    return ask(message, options)
+
+
+def _check_no_input(message: str) -> None:
+    """Raise an error if no input is allowed."""
+    if os.environ.get("PIP_NO_INPUT"):
+        raise Exception(
+            f"No input was expected ($PIP_NO_INPUT set); question: {message}"
+        )
+
+
+def ask(message: str, options: Iterable[str]) -> str:
+    """Ask the message interactively, with the given possible responses"""
+    while 1:
+        _check_no_input(message)
+        response = input(message)
+        response = response.strip().lower()
+        if response not in options:
+            print(
+                "Your response ({!r}) was not one of the expected responses: "
+                "{}".format(response, ", ".join(options))
+            )
+        else:
+            return response
+
+
+def ask_input(message: str) -> str:
+    """Ask for input interactively."""
+    _check_no_input(message)
+    return input(message)
+
+
+def ask_password(message: str) -> str:
+    """Ask for a password interactively."""
+    _check_no_input(message)
+    return getpass.getpass(message)
+
+
+def strtobool(val: str) -> int:
+    """Convert a string representation of truth to true (1) or false (0).
+
+    True values are 'y', 'yes', 't', 'true', 'on', and '1'; false values
+    are 'n', 'no', 'f', 'false', 'off', and '0'.  Raises ValueError if
+    'val' is anything else.
+    """
+    val = val.lower()
+    if val in ("y", "yes", "t", "true", "on", "1"):
+        return 1
+    elif val in ("n", "no", "f", "false", "off", "0"):
         return 0
+    else:
+        raise ValueError(f"invalid truth value {val!r}")
 
 
-def save_py_data_struct(filename, data):
+def format_size(bytes: float) -> str:
+    if bytes > 1000 * 1000:
+        return f"{bytes / 1000.0 / 1000:.1f} MB"
+    elif bytes > 10 * 1000:
+        return f"{int(bytes / 1000)} kB"
+    elif bytes > 1000:
+        return f"{bytes / 1000.0:.1f} kB"
+    else:
+        return f"{int(bytes)} bytes"
+
+
+def tabulate(rows: Iterable[Iterable[Any]]) -> Tuple[List[str], List[int]]:
+    """Return a list of formatted rows and a list of column sizes.
+
+    For example::
+
+    >>> tabulate([['foobar', 2000], [0xdeadbeef]])
+    (['foobar     2000', '3735928559'], [10, 4])
     """
-    Save data into text file as Python data structure.
-    :param filename:
-    :param data:
-    :return:
+    rows = [tuple(map(str, row)) for row in rows]
+    sizes = [max(map(len, col)) for col in zip_longest(*rows, fillvalue="")]
+    table = [" ".join(map(str.ljust, row, sizes)).rstrip() for row in rows]
+    return table, sizes
+
+
+def is_installable_dir(path: str) -> bool:
+    """Is path is a directory containing pyproject.toml or setup.py?
+
+    If pyproject.toml exists, this is a PEP 517 project. Otherwise we look for
+    a legacy setuptools layout by identifying setup.py. We don't check for the
+    setup.cfg because using it without setup.py is only available for PEP 517
+    projects, which are already covered by the pyproject.toml check.
     """
-    dirname = os.path.dirname(filename)
-    if not os.path.exists(dirname):
-        os.makedirs(dirname)
-    with open(filename, 'w', encoding='utf-8') as f:
-        pprint.pprint(data, f)
+    if not os.path.isdir(path):
+        return False
+    if os.path.isfile(os.path.join(path, "pyproject.toml")):
+        return True
+    if os.path.isfile(os.path.join(path, "setup.py")):
+        return True
+    return False
 
 
-def load_py_data_struct(filename):
+def read_chunks(
+    file: BinaryIO, size: int = io.DEFAULT_BUFFER_SIZE
+) -> Generator[bytes, None, None]:
+    """Yield pieces of data from a file-like object until EOF."""
+    while True:
+        chunk = file.read(size)
+        if not chunk:
+            break
+        yield chunk
+
+
+def normalize_path(path: str, resolve_symlinks: bool = True) -> str:
     """
-    Load data saved as python code and interpret that code.
-    :param filename:
-    :return:
+    Convert a path to its canonical, case-normalized, absolute version.
+
     """
-    with open(filename, 'r', encoding='utf-8') as f:
-        if is_win:
-            # import versioninfo so that VSVersionInfo can parse correctly.
-            from PyInstaller.utils.win32 import versioninfo  # noqa: F401
-
-        return eval(f.read())
-
-
-def absnormpath(apath):
-    return os.path.abspath(os.path.normpath(apath))
+    path = os.path.expanduser(path)
+    if resolve_symlinks:
+        path = os.path.realpath(path)
+    else:
+        path = os.path.abspath(path)
+    return os.path.normcase(path)
 
 
-def module_parent_packages(full_modname):
+def splitext(path: str) -> Tuple[str, str]:
+    """Like os.path.splitext, but take off .tar too"""
+    base, ext = posixpath.splitext(path)
+    if base.lower().endswith(".tar"):
+        ext = base[-4:] + ext
+        base = base[:-4]
+    return base, ext
+
+
+def renames(old: str, new: str) -> None:
+    """Like os.renames(), but handles renaming across devices."""
+    # Implementation borrowed from os.renames().
+    head, tail = os.path.split(new)
+    if head and tail and not os.path.exists(head):
+        os.makedirs(head)
+
+    shutil.move(old, new)
+
+    head, tail = os.path.split(old)
+    if head and tail:
+        try:
+            os.removedirs(head)
+        except OSError:
+            pass
+
+
+def is_local(path: str) -> bool:
     """
-    Return list of parent package names.
-        'aaa.bb.c.dddd' ->  ['aaa', 'aaa.bb', 'aaa.bb.c']
-    :param full_modname: Full name of a module.
-    :return: List of parent module names.
+    Return True if path is within sys.prefix, if we're running in a virtualenv.
+
+    If we're not in a virtualenv, all paths are considered "local."
+
+    Caution: this function assumes the head of path has been normalized
+    with normalize_path.
     """
-    prefix = ''
-    parents = []
-    # Ignore the last component in module name and get really just parent, grandparent, great grandparent, etc.
-    for pkg in full_modname.split('.')[0:-1]:
-        # Ensure that first item does not start with dot '.'
-        prefix += '.' + pkg if prefix else pkg
-        parents.append(prefix)
-    return parents
+    if not running_under_virtualenv():
+        return True
+    return path.startswith(normalize_path(sys.prefix))
 
 
-def is_file_qt_plugin(filename):
+def write_output(msg: Any, *args: Any) -> None:
+    logger.info(msg, *args)
+
+
+class StreamWrapper(StringIO):
+    orig_stream: TextIO
+
+    @classmethod
+    def from_stream(cls, orig_stream: TextIO) -> "StreamWrapper":
+        ret = cls()
+        ret.orig_stream = orig_stream
+        return ret
+
+    # compileall.compile_dir() needs stdout.encoding to print to stdout
+    # type ignore is because TextIOBase.encoding is writeable
+    @property
+    def encoding(self) -> str:  # type: ignore
+        return self.orig_stream.encoding
+
+
+@contextlib.contextmanager
+def captured_output(stream_name: str) -> Generator[StreamWrapper, None, None]:
+    """Return a context manager used by captured_stdout/stdin/stderr
+    that temporarily replaces the sys stream *stream_name* with a StringIO.
+
+    Taken from Lib/support/__init__.py in the CPython repo.
     """
-    Check if the given file is a Qt plugin file.
-    :param filename: Full path to file to check.
-    :return: True if given file is a Qt plugin file, False if not.
+    orig_stdout = getattr(sys, stream_name)
+    setattr(sys, stream_name, StreamWrapper.from_stream(orig_stdout))
+    try:
+        yield getattr(sys, stream_name)
+    finally:
+        setattr(sys, stream_name, orig_stdout)
+
+
+def captured_stdout() -> ContextManager[StreamWrapper]:
+    """Capture the output of sys.stdout:
+
+       with captured_stdout() as stdout:
+           print('hello')
+       self.assertEqual(stdout.getvalue(), 'hello\n')
+
+    Taken from Lib/support/__init__.py in the CPython repo.
     """
+    return captured_output("stdout")
 
-    # Check the file contents; scan for QTMETADATA string. The scan is based on the brute-force Windows codepath of
-    # findPatternUnloaded() from qtbase/src/corelib/plugin/qlibrary.cpp in Qt5.
-    with open(filename, 'rb') as fp:
-        fp.seek(0, os.SEEK_END)
-        end_pos = fp.tell()
 
-        SEARCH_CHUNK_SIZE = 8192
-        QTMETADATA_MAGIC = b'QTMETADATA '
+def captured_stderr() -> ContextManager[StreamWrapper]:
+    """
+    See captured_stdout().
+    """
+    return captured_output("stderr")
 
-        magic_offset = -1
-        while end_pos >= len(QTMETADATA_MAGIC):
-            start_pos = max(end_pos - SEARCH_CHUNK_SIZE, 0)
-            chunk_size = end_pos - start_pos
-            # Is the remaining chunk large enough to hold the pattern?
-            if chunk_size < len(QTMETADATA_MAGIC):
-                break
-            # Read and scan the chunk
-            fp.seek(start_pos, os.SEEK_SET)
-            buf = fp.read(chunk_size)
-            pos = buf.rfind(QTMETADATA_MAGIC)
-            if pos != -1:
-                magic_offset = start_pos + pos
-                break
-            # Adjust search location for next chunk; ensure proper overlap.
-            end_pos = start_pos + len(QTMETADATA_MAGIC) - 1
-        if magic_offset == -1:
+
+# Simulates an enum
+def enum(*sequential: Any, **named: Any) -> Type[Any]:
+    enums = dict(zip(sequential, range(len(sequential))), **named)
+    reverse = {value: key for key, value in enums.items()}
+    enums["reverse_mapping"] = reverse
+    return type("Enum", (), enums)
+
+
+def build_netloc(host: str, port: Optional[int]) -> str:
+    """
+    Build a netloc from a host-port pair
+    """
+    if port is None:
+        return host
+    if ":" in host:
+        # Only wrap host with square brackets when it is IPv6
+        host = f"[{host}]"
+    return f"{host}:{port}"
+
+
+def build_url_from_netloc(netloc: str, scheme: str = "https") -> str:
+    """
+    Build a full URL from a netloc.
+    """
+    if netloc.count(":") >= 2 and "@" not in netloc and "[" not in netloc:
+        # It must be a bare IPv6 address, so wrap it with brackets.
+        netloc = f"[{netloc}]"
+    return f"{scheme}://{netloc}"
+
+
+def parse_netloc(netloc: str) -> Tuple[Optional[str], Optional[int]]:
+    """
+    Return the host-port pair from a netloc.
+    """
+    url = build_url_from_netloc(netloc)
+    parsed = urllib.parse.urlparse(url)
+    return parsed.hostname, parsed.port
+
+
+def split_auth_from_netloc(netloc: str) -> NetlocTuple:
+    """
+    Parse out and remove the auth information from a netloc.
+
+    Returns: (netloc, (username, password)).
+    """
+    if "@" not in netloc:
+        return netloc, (None, None)
+
+    # Split from the right because that's how urllib.parse.urlsplit()
+    # behaves if more than one @ is present (which can be checked using
+    # the password attribute of urlsplit()'s return value).
+    auth, netloc = netloc.rsplit("@", 1)
+    pw: Optional[str] = None
+    if ":" in auth:
+        # Split from the left because that's how urllib.parse.urlsplit()
+        # behaves if more than one : is present (which again can be checked
+        # using the password attribute of the return value)
+        user, pw = auth.split(":", 1)
+    else:
+        user, pw = auth, None
+
+    user = urllib.parse.unquote(user)
+    if pw is not None:
+        pw = urllib.parse.unquote(pw)
+
+    return netloc, (user, pw)
+
+
+def redact_netloc(netloc: str) -> str:
+    """
+    Replace the sensitive data in a netloc with "****", if it exists.
+
+    For example:
+        - "user:pass@example.com" returns "user:****@example.com"
+        - "accesstoken@example.com" returns "****@example.com"
+    """
+    netloc, (user, password) = split_auth_from_netloc(netloc)
+    if user is None:
+        return netloc
+    if password is None:
+        user = "****"
+        password = ""
+    else:
+        user = urllib.parse.quote(user)
+        password = ":****"
+    return f"{user}{password}@{netloc}"
+
+
+def _transform_url(
+    url: str, transform_netloc: Callable[[str], Tuple[Any, ...]]
+) -> Tuple[str, NetlocTuple]:
+    """Transform and replace netloc in a url.
+
+    transform_netloc is a function taking the netloc and returning a
+    tuple. The first element of this tuple is the new netloc. The
+    entire tuple is returned.
+
+    Returns a tuple containing the transformed url as item 0 and the
+    original tuple returned by transform_netloc as item 1.
+    """
+    purl = urllib.parse.urlsplit(url)
+    netloc_tuple = transform_netloc(purl.netloc)
+    # stripped url
+    url_pieces = (purl.scheme, netloc_tuple[0], purl.path, purl.query, purl.fragment)
+    surl = urllib.parse.urlunsplit(url_pieces)
+    return surl, cast("NetlocTuple", netloc_tuple)
+
+
+def _get_netloc(netloc: str) -> NetlocTuple:
+    return split_auth_from_netloc(netloc)
+
+
+def _redact_netloc(netloc: str) -> Tuple[str]:
+    return (redact_netloc(netloc),)
+
+
+def split_auth_netloc_from_url(
+    url: str,
+) -> Tuple[str, str, Tuple[Optional[str], Optional[str]]]:
+    """
+    Parse a url into separate netloc, auth, and url with no auth.
+
+    Returns: (url_without_auth, netloc, (username, password))
+    """
+    url_without_auth, (netloc, auth) = _transform_url(url, _get_netloc)
+    return url_without_auth, netloc, auth
+
+
+def remove_auth_from_url(url: str) -> str:
+    """Return a copy of url with 'username:password@' removed."""
+    # username/pass params are passed to subversion through flags
+    # and are not recognized in the url.
+    return _transform_url(url, _get_netloc)[0]
+
+
+def redact_auth_from_url(url: str) -> str:
+    """Replace the password in a given url with ****."""
+    return _transform_url(url, _redact_netloc)[0]
+
+
+def redact_auth_from_requirement(req: Requirement) -> str:
+    """Replace the password in a given requirement url with ****."""
+    if not req.url:
+        return str(req)
+    return str(req).replace(req.url, redact_auth_from_url(req.url))
+
+
+class HiddenText:
+    def __init__(self, secret: str, redacted: str) -> None:
+        self.secret = secret
+        self.redacted = redacted
+
+    def __repr__(self) -> str:
+        return f"<HiddenText {str(self)!r}>"
+
+    def __str__(self) -> str:
+        return self.redacted
+
+    # This is useful for testing.
+    def __eq__(self, other: Any) -> bool:
+        if type(self) != type(other):
             return False
 
-        return True
+        # The string being used for redaction doesn't also have to match,
+        # just the raw, original string.
+        return self.secret == other.secret
 
 
-BOM_MARKERS_TO_DECODERS = {
-    codecs.BOM_UTF32_LE: codecs.utf_32_le_decode,
-    codecs.BOM_UTF32_BE: codecs.utf_32_be_decode,
-    codecs.BOM_UTF32: codecs.utf_32_decode,
-    codecs.BOM_UTF16_LE: codecs.utf_16_le_decode,
-    codecs.BOM_UTF16_BE: codecs.utf_16_be_decode,
-    codecs.BOM_UTF16: codecs.utf_16_decode,
-    codecs.BOM_UTF8: codecs.utf_8_decode,
-}
-BOM_RE = re.compile(rb"\A(%s)?(.*)" % b"|".join(map(re.escape, BOM_MARKERS_TO_DECODERS)), re.DOTALL)
+def hide_value(value: str) -> HiddenText:
+    return HiddenText(value, redacted="****")
 
 
-def decode(raw: bytes):
+def hide_url(url: str) -> HiddenText:
+    redacted = redact_auth_from_url(url)
+    return HiddenText(url, redacted=redacted)
+
+
+def protect_pip_from_modification_on_windows(modifying_pip: bool) -> None:
+    """Protection of pip.exe from modification on Windows
+
+    On Windows, any operation modifying pip should be run as:
+        python -m pip ...
     """
-    Decode bytes to string, respecting and removing any byte-order marks if present, or respecting but not removing any
-    PEP263 encoding comments (# encoding: cp1252).
-    """
-    bom, raw = BOM_RE.match(raw).groups()
-    if bom:
-        return BOM_MARKERS_TO_DECODERS[bom](raw)[0]
+    pip_names = [
+        "pip",
+        f"pip{sys.version_info.major}",
+        f"pip{sys.version_info.major}.{sys.version_info.minor}",
+    ]
 
-    encoding, _ = tokenize.detect_encoding(io.BytesIO(raw).readline)
-    return raw.decode(encoding)
+    # See https://github.com/pypa/pip/issues/1299 for more discussion
+    should_show_use_python_msg = (
+        modifying_pip and WINDOWS and os.path.basename(sys.argv[0]) in pip_names
+    )
 
-
-def is_iterable(arg):
-    """
-    Check if the passed argument is an iterable."
-    """
-    try:
-        iter(arg)
-    except TypeError:
-        return False
-    return True
+    if should_show_use_python_msg:
+        new_command = [sys.executable, "-m", "pip"] + sys.argv[1:]
+        raise CommandError(
+            "To modify pip, please run the following command:\n{}".format(
+                " ".join(new_command)
+            )
+        )
 
 
-def path_to_parent_archive(filename):
+def check_externally_managed() -> None:
+    """Check whether the current environment is externally managed.
+
+    If the ``EXTERNALLY-MANAGED`` config file is found, the current environment
+    is considered externally managed, and an ExternallyManagedEnvironment is
+    raised.
     """
-    Check if the given file path points to a file inside an existing archive file. Returns first path from the set of
-    parent paths that points to an existing file, or `None` if no such path exists (i.e., file is an actual stand-alone
-    file).
+    if running_under_virtualenv():
+        return
+    marker = os.path.join(sysconfig.get_path("stdlib"), "EXTERNALLY-MANAGED")
+    if not os.path.isfile(marker):
+        return
+    raise ExternallyManagedEnvironment.from_config(marker)
+
+
+def is_console_interactive() -> bool:
+    """Is this console interactive?"""
+    return sys.stdin is not None and sys.stdin.isatty()
+
+
+def hash_file(path: str, blocksize: int = 1 << 20) -> Tuple[Any, int]:
+    """Return (hash, length) for path using hashlib.sha256()"""
+
+    h = hashlib.sha256()
+    length = 0
+    with open(path, "rb") as f:
+        for block in read_chunks(f, size=blocksize):
+            length += len(block)
+            h.update(block)
+    return h, length
+
+
+def pairwise(iterable: Iterable[Any]) -> Iterator[Tuple[Any, Any]]:
     """
-    for parent in pathlib.Path(filename).parents:
-        if parent.is_file():
-            return parent
-    return None
+    Return paired elements.
+
+    For example:
+        s -> (s0, s1), (s2, s3), (s4, s5), ...
+    """
+    iterable = iter(iterable)
+    return zip_longest(iterable, iterable)
+
+
+def partition(
+    pred: Callable[[T], bool],
+    iterable: Iterable[T],
+) -> Tuple[Iterable[T], Iterable[T]]:
+    """
+    Use a predicate to partition entries into false entries and true entries,
+    like
+
+        partition(is_odd, range(10)) --> 0 2 4 6 8   and  1 3 5 7 9
+    """
+    t1, t2 = tee(iterable)
+    return filterfalse(pred, t1), filter(pred, t2)
+
+
+class ConfiguredBuildBackendHookCaller(BuildBackendHookCaller):
+    def __init__(
+        self,
+        config_holder: Any,
+        source_dir: str,
+        build_backend: str,
+        backend_path: Optional[str] = None,
+        runner: Optional[Callable[..., None]] = None,
+        python_executable: Optional[str] = None,
+    ):
+        super().__init__(
+            source_dir, build_backend, backend_path, runner, python_executable
+        )
+        self.config_holder = config_holder
+
+    def build_wheel(
+        self,
+        wheel_directory: str,
+        config_settings: Optional[Dict[str, Union[str, List[str]]]] = None,
+        metadata_directory: Optional[str] = None,
+    ) -> str:
+        cs = self.config_holder.config_settings
+        return super().build_wheel(
+            wheel_directory, config_settings=cs, metadata_directory=metadata_directory
+        )
+
+    def build_sdist(
+        self,
+        sdist_directory: str,
+        config_settings: Optional[Dict[str, Union[str, List[str]]]] = None,
+    ) -> str:
+        cs = self.config_holder.config_settings
+        return super().build_sdist(sdist_directory, config_settings=cs)
+
+    def build_editable(
+        self,
+        wheel_directory: str,
+        config_settings: Optional[Dict[str, Union[str, List[str]]]] = None,
+        metadata_directory: Optional[str] = None,
+    ) -> str:
+        cs = self.config_holder.config_settings
+        return super().build_editable(
+            wheel_directory, config_settings=cs, metadata_directory=metadata_directory
+        )
+
+    def get_requires_for_build_wheel(
+        self, config_settings: Optional[Dict[str, Union[str, List[str]]]] = None
+    ) -> List[str]:
+        cs = self.config_holder.config_settings
+        return super().get_requires_for_build_wheel(config_settings=cs)
+
+    def get_requires_for_build_sdist(
+        self, config_settings: Optional[Dict[str, Union[str, List[str]]]] = None
+    ) -> List[str]:
+        cs = self.config_holder.config_settings
+        return super().get_requires_for_build_sdist(config_settings=cs)
+
+    def get_requires_for_build_editable(
+        self, config_settings: Optional[Dict[str, Union[str, List[str]]]] = None
+    ) -> List[str]:
+        cs = self.config_holder.config_settings
+        return super().get_requires_for_build_editable(config_settings=cs)
+
+    def prepare_metadata_for_build_wheel(
+        self,
+        metadata_directory: str,
+        config_settings: Optional[Dict[str, Union[str, List[str]]]] = None,
+        _allow_fallback: bool = True,
+    ) -> str:
+        cs = self.config_holder.config_settings
+        return super().prepare_metadata_for_build_wheel(
+            metadata_directory=metadata_directory,
+            config_settings=cs,
+            _allow_fallback=_allow_fallback,
+        )
+
+    def prepare_metadata_for_build_editable(
+        self,
+        metadata_directory: str,
+        config_settings: Optional[Dict[str, Union[str, List[str]]]] = None,
+        _allow_fallback: bool = True,
+    ) -> str:
+        cs = self.config_holder.config_settings
+        return super().prepare_metadata_for_build_editable(
+            metadata_directory=metadata_directory,
+            config_settings=cs,
+            _allow_fallback=_allow_fallback,
+        )

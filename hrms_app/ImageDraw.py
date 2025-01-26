@@ -34,8 +34,8 @@ from __future__ import annotations
 import math
 import struct
 from collections.abc import Sequence
-from types import ModuleType
-from typing import TYPE_CHECKING, Any, AnyStr, Callable, Union, cast
+from custom_types import ModuleType
+from custom_typing import TYPE_CHECKING, Any, AnyStr, Callable, Union, cast
 
 from . import Image, ImageColor
 from ._deprecate import deprecate

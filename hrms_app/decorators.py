@@ -1,233 +1,176 @@
-"""
-The most important decorator in this module is `@api_view`, which is used
-for writing function-based views with REST framework.
+"Functions that help with dynamically creating decorators for views."
 
-There are also various decorators for setting the API policies on function
-based views, as well as the `@action` decorator, which is used to annotate
-methods on viewsets that should be included by routers.
-"""
-import types
-
-from django.forms.utils import pretty_name
-
-from rest_framework.views import APIView
+# For backwards compatibility in Django 2.0.
+from contextlib import ContextDecorator  # noqa
+from custom_functools import WRAPPER_ASSIGNMENTS, partial, update_wrapper, wraps
 
 
-def api_view(http_method_names=None):
+class classonlymethod(classmethod):
+    def __get__(self, instance, cls=None):
+        if instance is not None:
+            raise AttributeError("This method is available only on the class, not on instances.")
+        return super().__get__(instance, cls)
+
+
+def _update_method_wrapper(_wrapper, decorator):
+    # _multi_decorate()'s bound_method isn't available in this scope. Cheat by
+    # using it on a dummy function.
+    @decorator
+    def dummy(*args, **kwargs):
+        pass
+    update_wrapper(_wrapper, dummy)
+
+
+def _multi_decorate(decorators, method):
     """
-    Decorator that converts a function-based view into an APIView subclass.
-    Takes a list of allowed methods for the view as an argument.
+    Decorate `method` with one or more function decorators. `decorators` can be
+    a single decorator or an iterable of decorators.
     """
-    http_method_names = ['GET'] if (http_method_names is None) else http_method_names
+    if hasattr(decorators, '__iter__'):
+        # Apply a list/tuple of decorators if 'decorators' is one. Decorator
+        # functions are applied so that the call order is the same as the
+        # order in which they appear in the iterable.
+        decorators = decorators[::-1]
+    else:
+        decorators = [decorators]
 
-    def decorator(func):
+    def _wrapper(self, *args, **kwargs):
+        # bound_method has the signature that 'decorator' expects i.e. no
+        # 'self' argument, but it's a closure over self so it can call
+        # 'func'. Also, wrap method.__get__() in a function because new
+        # attributes can't be set on bound method objects, only on functions.
+        bound_method = partial(method.__get__(self, type(self)))
+        for dec in decorators:
+            bound_method = dec(bound_method)
+        return bound_method(*args, **kwargs)
 
-        WrappedAPIView = type(
-            'WrappedAPIView',
-            (APIView,),
-            {'__doc__': func.__doc__}
-        )
-
-        # Note, the above allows us to set the docstring.
-        # It is the equivalent of:
-        #
-        #     class WrappedAPIView(APIView):
-        #         pass
-        #     WrappedAPIView.__doc__ = func.doc    <--- Not possible to do this
-
-        # api_view applied without (method_names)
-        assert not isinstance(http_method_names, types.FunctionType), \
-            '@api_view missing list of allowed HTTP methods'
-
-        # api_view applied with eg. string instead of list of strings
-        assert isinstance(http_method_names, (list, tuple)), \
-            '@api_view expected a list of strings, received %s' % type(http_method_names).__name__
-
-        allowed_methods = set(http_method_names) | {'options'}
-        WrappedAPIView.http_method_names = [method.lower() for method in allowed_methods]
-
-        def handler(self, *args, **kwargs):
-            return func(*args, **kwargs)
-
-        for method in http_method_names:
-            setattr(WrappedAPIView, method.lower(), handler)
-
-        WrappedAPIView.__name__ = func.__name__
-        WrappedAPIView.__module__ = func.__module__
-
-        WrappedAPIView.renderer_classes = getattr(func, 'renderer_classes',
-                                                  APIView.renderer_classes)
-
-        WrappedAPIView.parser_classes = getattr(func, 'parser_classes',
-                                                APIView.parser_classes)
-
-        WrappedAPIView.authentication_classes = getattr(func, 'authentication_classes',
-                                                        APIView.authentication_classes)
-
-        WrappedAPIView.throttle_classes = getattr(func, 'throttle_classes',
-                                                  APIView.throttle_classes)
-
-        WrappedAPIView.permission_classes = getattr(func, 'permission_classes',
-                                                    APIView.permission_classes)
-
-        WrappedAPIView.schema = getattr(func, 'schema',
-                                        APIView.schema)
-
-        return WrappedAPIView.as_view()
-
-    return decorator
+    # Copy any attributes that a decorator adds to the function it decorates.
+    for dec in decorators:
+        _update_method_wrapper(_wrapper, dec)
+    # Preserve any existing attributes of 'method', including the name.
+    update_wrapper(_wrapper, method)
+    return _wrapper
 
 
-def renderer_classes(renderer_classes):
-    def decorator(func):
-        func.renderer_classes = renderer_classes
-        return func
-    return decorator
-
-
-def parser_classes(parser_classes):
-    def decorator(func):
-        func.parser_classes = parser_classes
-        return func
-    return decorator
-
-
-def authentication_classes(authentication_classes):
-    def decorator(func):
-        func.authentication_classes = authentication_classes
-        return func
-    return decorator
-
-
-def throttle_classes(throttle_classes):
-    def decorator(func):
-        func.throttle_classes = throttle_classes
-        return func
-    return decorator
-
-
-def permission_classes(permission_classes):
-    def decorator(func):
-        func.permission_classes = permission_classes
-        return func
-    return decorator
-
-
-def schema(view_inspector):
-    def decorator(func):
-        func.schema = view_inspector
-        return func
-    return decorator
-
-
-def action(methods=None, detail=None, url_path=None, url_name=None, **kwargs):
+def method_decorator(decorator, name=''):
     """
-    Mark a ViewSet method as a routable action.
-
-    `@action`-decorated functions will be endowed with a `mapping` property,
-    a `MethodMapper` that can be used to add additional method-based behaviors
-    on the routed action.
-
-    :param methods: A list of HTTP method names this action responds to.
-                    Defaults to GET only.
-    :param detail: Required. Determines whether this action applies to
-                   instance/detail requests or collection/list requests.
-    :param url_path: Define the URL segment for this action. Defaults to the
-                     name of the method decorated.
-    :param url_name: Define the internal (`reverse`) URL name for this action.
-                     Defaults to the name of the method decorated with underscores
-                     replaced with dashes.
-    :param kwargs: Additional properties to set on the view.  This can be used
-                   to override viewset-level *_classes settings, equivalent to
-                   how the `@renderer_classes` etc. decorators work for function-
-                   based API views.
+    Convert a function decorator into a method decorator
     """
-    methods = ['get'] if methods is None else methods
-    methods = [method.lower() for method in methods]
+    # 'obj' can be a class or a function. If 'obj' is a function at the time it
+    # is passed to _dec,  it will eventually be a method of the class it is
+    # defined on. If 'obj' is a class, the 'name' is required to be the name
+    # of the method that will be decorated.
+    def _dec(obj):
+        if not isinstance(obj, type):
+            return _multi_decorate(decorator, obj)
+        if not (name and hasattr(obj, name)):
+            raise ValueError(
+                "The keyword argument `name` must be the name of a method "
+                "of the decorated class: %s. Got '%s' instead." % (obj, name)
+            )
+        method = getattr(obj, name)
+        if not callable(method):
+            raise TypeError(
+                "Cannot decorate '%s' as it isn't a callable attribute of "
+                "%s (%s)." % (name, obj, method)
+            )
+        _wrapper = _multi_decorate(decorator, method)
+        setattr(obj, name, _wrapper)
+        return obj
 
-    assert detail is not None, (
-        "@action() missing required argument: 'detail'"
-    )
-
-    # name and suffix are mutually exclusive
-    if 'name' in kwargs and 'suffix' in kwargs:
-        raise TypeError("`name` and `suffix` are mutually exclusive arguments.")
-
-    def decorator(func):
-        func.mapping = MethodMapper(func, methods)
-
-        func.detail = detail
-        func.url_path = url_path if url_path else func.__name__
-        func.url_name = url_name if url_name else func.__name__.replace('_', '-')
-
-        # These kwargs will end up being passed to `ViewSet.as_view()` within
-        # the router, which eventually delegates to Django's CBV `View`,
-        # which assigns them as instance attributes for each request.
-        func.kwargs = kwargs
-
-        # Set descriptive arguments for viewsets
-        if 'name' not in kwargs and 'suffix' not in kwargs:
-            func.kwargs['name'] = pretty_name(func.__name__)
-        func.kwargs['description'] = func.__doc__ or None
-
-        return func
-    return decorator
+    # Don't worry about making _dec look similar to a list/tuple as it's rather
+    # meaningless.
+    if not hasattr(decorator, '__iter__'):
+        update_wrapper(_dec, decorator)
+    # Change the name to aid debugging.
+    obj = decorator if hasattr(decorator, '__name__') else decorator.__class__
+    _dec.__name__ = 'method_decorator(%s)' % obj.__name__
+    return _dec
 
 
-class MethodMapper(dict):
+def decorator_from_middleware_with_args(middleware_class):
     """
-    Enables mapping HTTP methods to different ViewSet methods for a single,
-    logical action.
+    Like decorator_from_middleware, but return a function
+    that accepts the arguments to be passed to the middleware_class.
+    Use like::
 
-    Example usage:
+         cache_page = decorator_from_middleware_with_args(CacheMiddleware)
+         # ...
 
-        class MyViewSet(ViewSet):
-
-            @action(detail=False)
-            def example(self, request, **kwargs):
-                ...
-
-            @example.mapping.post
-            def create_example(self, request, **kwargs):
-                ...
+         @cache_page(3600)
+         def my_view(request):
+             # ...
     """
+    return make_middleware_decorator(middleware_class)
 
-    def __init__(self, action, methods):
-        self.action = action
-        for method in methods:
-            self[method] = self.action.__name__
 
-    def _map(self, method, func):
-        assert method not in self, (
-            "Method '%s' has already been mapped to '.%s'." % (method, self[method]))
-        assert func.__name__ != self.action.__name__, (
-            "Method mapping does not behave like the property decorator. You "
-            "cannot use the same method name for each mapping declaration.")
+def decorator_from_middleware(middleware_class):
+    """
+    Given a middleware class (not an instance), return a view decorator. This
+    lets you use middleware functionality on a per-view basis. The middleware
+    is created with no params passed.
+    """
+    return make_middleware_decorator(middleware_class)()
 
-        self[method] = func.__name__
 
-        return func
+# Unused, for backwards compatibility in Django 2.0.
+def available_attrs(fn):
+    """
+    Return the list of functools-wrappable attributes on a callable.
+    This was required as a workaround for https://bugs.python.org/issue3445
+    under Python 2.
+    """
+    return WRAPPER_ASSIGNMENTS
 
-    def get(self, func):
-        return self._map('get', func)
 
-    def post(self, func):
-        return self._map('post', func)
+def make_middleware_decorator(middleware_class):
+    def _make_decorator(*m_args, **m_kwargs):
+        middleware = middleware_class(*m_args, **m_kwargs)
 
-    def put(self, func):
-        return self._map('put', func)
+        def _decorator(view_func):
+            @wraps(view_func)
+            def _wrapped_view(request, *args, **kwargs):
+                if hasattr(middleware, 'process_request'):
+                    result = middleware.process_request(request)
+                    if result is not None:
+                        return result
+                if hasattr(middleware, 'process_view'):
+                    result = middleware.process_view(request, view_func, args, kwargs)
+                    if result is not None:
+                        return result
+                try:
+                    response = view_func(request, *args, **kwargs)
+                except Exception as e:
+                    if hasattr(middleware, 'process_exception'):
+                        result = middleware.process_exception(request, e)
+                        if result is not None:
+                            return result
+                    raise
+                if hasattr(response, 'render') and callable(response.render):
+                    if hasattr(middleware, 'process_template_response'):
+                        response = middleware.process_template_response(request, response)
+                    # Defer running of process_response until after the template
+                    # has been rendered:
+                    if hasattr(middleware, 'process_response'):
+                        def callback(response):
+                            return middleware.process_response(request, response)
+                        response.add_post_render_callback(callback)
+                else:
+                    if hasattr(middleware, 'process_response'):
+                        return middleware.process_response(request, response)
+                return response
+            return _wrapped_view
+        return _decorator
+    return _make_decorator
 
-    def patch(self, func):
-        return self._map('patch', func)
 
-    def delete(self, func):
-        return self._map('delete', func)
+class classproperty:
+    def __init__(self, method=None):
+        self.fget = method
 
-    def head(self, func):
-        return self._map('head', func)
+    def __get__(self, instance, cls=None):
+        return self.fget(cls)
 
-    def options(self, func):
-        return self._map('options', func)
-
-    def trace(self, func):
-        return self._map('trace', func)
+    def getter(self, method):
+        self.fget = method
+        return self

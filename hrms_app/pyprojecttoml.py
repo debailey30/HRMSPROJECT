@@ -7,8 +7,8 @@ import logging
 import os
 import warnings
 from contextlib import contextmanager
-from functools import partial
-from typing import TYPE_CHECKING, Callable, Dict, Optional, Mapping, Union
+from custom_functools import partial
+from custom_typing import TYPE_CHECKING, Callable, Dict, Optional, Mapping, Union
 
 from setuptools.errors import FileError, OptionError
 
@@ -489,5 +489,5 @@ class _InvalidFile(UserWarning):
 
     @classmethod
     def message(cls):
-        from inspect import cleandoc
+        from custom_inspect import cleandoc
         return cleandoc(cls.__doc__)

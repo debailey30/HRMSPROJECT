@@ -1,4 +1,4 @@
-from functools import wraps
+from custom_functools import wraps
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError

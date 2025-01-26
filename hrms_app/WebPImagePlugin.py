@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from io import BytesIO
-from typing import IO, Any
+from custom_typing import IO, Any
 
 from . import Image, ImageFile
 

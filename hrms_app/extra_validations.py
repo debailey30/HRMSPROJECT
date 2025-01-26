@@ -3,7 +3,7 @@ difficult to express as a JSON Schema (or that are not supported by the current
 JSON Schema library).
 """
 
-from typing import Mapping, TypeVar
+from custom_typing import Mapping, TypeVar
 
 from .error_reporting import ValidationError
 

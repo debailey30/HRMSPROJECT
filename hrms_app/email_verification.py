@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from custom_typing import Optional, Tuple
 
 from django.contrib import messages
 from django.http import HttpRequest, HttpResponse

@@ -7,7 +7,8 @@
 from __future__ import print_function
 
 import copy
-from collections import OrderedDict
+from custom_collections import OrderedDict
+from curses import KEY_A1
 import errno
 import json
 import multiprocessing
@@ -21,12 +22,13 @@ import subprocess
 import sys
 import sysconfig
 import zipfile
+
 if os.name == 'nt':
   try:
     import winreg
   except ImportError:
     # old python 2 name
-    import _winreg as winreg
+    import winreg
   import ctypes.wintypes
   import winreg
 
@@ -104,7 +106,9 @@ else:
       MINGW = True
     if os.getenv('MSYSTEM') != 'MSYS' and os.getenv('MSYSTEM') != 'MINGW64':
       # https://stackoverflow.com/questions/37460073/msys-vs-mingw-internal-environment-variables
-      errlog('Warning: MSYSTEM environment variable is present, and is set to "' + os.getenv('MSYSTEM') + '". This shell has not been tested with emsdk and may not work.')
+      msystem = os.getenv('MSYSTEM')
+      if msystem:
+        errlog('Warning: MSYSTEM environment variable is present, and is set to "' + msystem + '". This shell has not been tested with emsdk and may not work.')
 
   if platform.mac_ver()[0] != '':
     MACOS = True
@@ -275,7 +279,7 @@ def vs_filewhere(installation_path, platform, file):
   try:
     vcvarsall = os.path.join(installation_path, 'VC\\Auxiliary\\Build\\vcvarsall.bat')
     env = subprocess.check_output('cmd /c "%s" %s & where %s' % (vcvarsall, platform, file))
-    paths = [path[:-len(file)] for path in env.split('\r\n') if path.endswith(file)]
+    paths = [path[:-len(file)] for path in env.splitlines() if path.endswith(file)]
     return paths[0]
   except Exception:
     return ''
@@ -964,7 +968,7 @@ def make_build(build_root, build_type):
     print('Running build: ' + str(make))
     ret = subprocess.check_call(make, cwd=build_root, env=build_env(CMAKE_GENERATOR))
     if ret != 0:
-      errlog('Build failed with exit code ' + ret + '!')
+      errlog('Build failed with exit code ' + str(ret) + '!')
       errlog('Working directory: ' + build_root)
       return False
   except Exception as e:
@@ -1483,7 +1487,7 @@ def parse_key_value(line):
     value = line[eq + 1:].strip()
     return (key, value)
   else:
-    return (key, '')
+    return (KEY_A1, '')
 
 
 def load_em_config():
@@ -1613,8 +1617,10 @@ def find_msbuild_dir():
 
 class Tool(object):
   def __init__(self, data):
+    self.activated_env = data.get('activated_env', '')
     # Convert the dictionary representation of the tool in 'data' to members of
     # this class for convenience.
+    self.id = data.get('id', None)
     for key, value in data.items():
       # Python2 compat, convert unicode to str
       if sys.version_info < (3,) and isinstance(value, unicode): # noqa
@@ -1690,7 +1696,10 @@ class Tool(object):
     if not hasattr(self, 'activated_cfg'):
       return {}
     config = OrderedDict()
-    expanded = to_unix_path(self.expand_vars(self.activated_cfg))
+    if hasattr(self, 'activated_cfg'):
+        expanded = to_unix_path(self.expand_vars(self.activated_cfg))
+    else:
+        expanded = ''
     for specific_cfg in expanded.split(';'):
       name, value = specific_cfg.split('=')
       config[name] = value.strip("'")

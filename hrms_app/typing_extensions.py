@@ -14,7 +14,7 @@ if PEP_560:
     GenericMeta = type
 else:
     # 3.6
-    from typing import GenericMeta, _type_vars  # noqa
+    from custom_typing import GenericMeta, _type_vars  # noqa
 
 # The two functions below are copies of typing internal helpers.
 # They are needed by _ProtocolMeta
@@ -96,7 +96,7 @@ else:
         """Special type indicating functions that never return.
         Example::
 
-          from typing import NoReturn
+          from custom_typing import NoReturn
 
           def stop() -> NoReturn:
               raise Exception('no way')
@@ -512,7 +512,7 @@ if hasattr(typing, 'Protocol'):
     Protocol = typing.Protocol
 # 3.7
 elif PEP_560:
-    from typing import _collect_type_vars  # noqa
+    from custom_typing import _collect_type_vars  # noqa
 
     def _no_init(self, *args, **kwargs):
         if type(self)._is_protocol:
@@ -696,7 +696,7 @@ elif PEP_560:
             cls.__init__ = _no_init
 # 3.6
 else:
-    from typing import _next_in_mro, _type_check  # noqa
+    from custom_typing import _next_in_mro, _type_check  # noqa
 
     def _no_init(self, *args, **kwargs):
         if type(self)._is_protocol:
@@ -1424,12 +1424,12 @@ if sys.version_info[:2] >= (3, 10):
 elif PEP_560:
     try:
         # 3.9+
-        from typing import _BaseGenericAlias
+        from custom_typing import _BaseGenericAlias
     except ImportError:
         _BaseGenericAlias = typing._GenericAlias
     try:
         # 3.9+
-        from typing import GenericAlias
+        from custom_typing import GenericAlias
     except ImportError:
         GenericAlias = typing._GenericAlias
 
@@ -2100,7 +2100,7 @@ elif sys.version_info[:2] >= (3, 7):
 
         Example::
 
-          from typing import Self
+          from custom_typing import Self
 
           class ReturnsSelf:
               def parse(self, data: bytes) -> Self:
@@ -2116,7 +2116,7 @@ else:
 
         Example::
 
-          from typing import Self
+          from custom_typing import Self
 
           class ReturnsSelf:
               def parse(self, data: bytes) -> Self:

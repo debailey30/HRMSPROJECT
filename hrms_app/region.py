@@ -1,4 +1,4 @@
-from typing import NamedTuple
+from custom_typing import NamedTuple
 
 
 class Region(NamedTuple):

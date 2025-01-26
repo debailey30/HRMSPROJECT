@@ -4,7 +4,7 @@ altgraph.GraphUtil - Utility classes and functions
 """
 
 import random
-from collections import deque
+from custom_collections import deque
 
 from altgraph import Graph, GraphError
 

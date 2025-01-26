@@ -8,7 +8,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SECRET_KEY = secrets.token_urlsafe(50)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DEBUG', 'False') == 'True'  # Set to True for development
+DEBUG = os.getenv('DEBUG', 'True') == 'True'  # Set to True for development
 
 ALLOWED_HOSTS = ['127.0.0.1', 'localhost']  # Add your domain or IP address here
 
@@ -21,7 +21,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.humanize',
-    'hrms',  # Add your app here
+    'hrms_app',  # Ensure only 'hrms_app' is listed if there is a conflict with 'hrms'
 ]
 
 MIDDLEWARE = [
@@ -39,15 +39,14 @@ ROOT_URLCONF = 'HRMSPROJECT.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [os.path.join(BASE_DIR, 'templates')],
+        'DIRS': [],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
                 'django.template.context_processors.debug',
-                'django.template.context_processors.request',  # Correct reference for request context processor
+                'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
-                'hrms.context_processors.get_departments',  # Add your context processor here
             ],
         },
     },
@@ -112,4 +111,9 @@ LOGIN_REDIRECT_URL = 'hrms:dashboard'
 
 
 # Set the default auto field
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'# filepath: /c:/Users/DeeAnn/Desktop/HRMSPROJECT/hrms_app/apps.py
+from django.apps import AppConfig
+
+class HrmsAppConfig(AppConfig):
+    default_auto_field = 'django.db.models.BigAutoField'
+    name = 'hrms_app'

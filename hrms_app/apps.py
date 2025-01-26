@@ -1,7 +1,6 @@
+# filepath: /c:/Users/DeeAnn/Desktop/HRMSPROJECT/hrms_app/apps.py
 from django.apps import AppConfig
-from django.utils.translation import gettext_lazy as _
 
-
-class AuthTokenConfig(AppConfig):
-    name = 'rest_framework.authtoken'
-    verbose_name = _("Auth Token")
+class HrmsAppConfig(AppConfig):
+    default_auto_field = 'django.db.models.BigAutoField'
+    name = 'hrms_app'

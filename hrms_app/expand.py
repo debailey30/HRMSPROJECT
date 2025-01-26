@@ -28,7 +28,7 @@ from glob import iglob
 from configparser import ConfigParser
 from importlib.machinery import ModuleSpec
 from itertools import chain
-from typing import (
+from custom_typing import (
     TYPE_CHECKING,
     Callable,
     Dict,
@@ -43,7 +43,7 @@ from typing import (
     cast
 )
 from pathlib import Path
-from types import ModuleType
+from custom_types import ModuleType
 
 from distutils.errors import DistutilsOptionError
 

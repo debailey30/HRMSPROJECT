@@ -40,8 +40,8 @@ import tempfile
 import warnings
 from collections.abc import Callable, Iterator, MutableMapping, Sequence
 from enum import IntEnum
-from types import ModuleType
-from typing import (
+from custom_types import ModuleType
+from custom_typing import (
     IO,
     TYPE_CHECKING,
     Any,

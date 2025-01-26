@@ -5,7 +5,7 @@ relationships and their associated metadata.
 
 Usage: `get_field_info(model)` returns a `FieldInfo` instance.
 """
-from collections import namedtuple
+from custom_collections import namedtuple
 
 FieldInfo = namedtuple('FieldInfo', [
     'pk',  # Model field instance

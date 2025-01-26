@@ -4,7 +4,7 @@ Utility functions for creating archive files (tarballs, zip files,
 that sort of thing)."""
 
 import os
-from warnings import warn
+from custom_warnings import warn
 import sys
 
 try:

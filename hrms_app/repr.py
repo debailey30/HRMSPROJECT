@@ -1,6 +1,6 @@
 import inspect
-from functools import partial
-from typing import (
+from custom_functools import partial
+from custom_typing import (
     Any,
     Callable,
     Iterable,
@@ -76,7 +76,7 @@ def auto(
                         param.POSITIONAL_OR_KEYWORD,
                         param.KEYWORD_ONLY,
                     ):
-                        if param.default is param.empty:
+                        if param.default == param.empty:
                             yield getattr(self, param.name)
                         else:
                             yield param.name, getattr(self, param.name), param.default

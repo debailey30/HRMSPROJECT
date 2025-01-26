@@ -19,7 +19,7 @@
 from __future__ import annotations
 
 import re
-from functools import lru_cache
+from custom_functools import lru_cache
 
 from . import Image
 

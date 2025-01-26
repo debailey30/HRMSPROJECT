@@ -14,7 +14,7 @@ For example, you might have a `urls.py` that looks something like this:
     urlpatterns = router.urls
 """
 import itertools
-from collections import namedtuple
+from custom_collections import namedtuple
 
 from django.core.exceptions import ImproperlyConfigured
 from django.urls import NoReverseMatch, path, re_path

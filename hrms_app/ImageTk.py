@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import tkinter
 from io import BytesIO
-from typing import TYPE_CHECKING, Any, cast
+from custom_typing import TYPE_CHECKING, Any, cast
 
 from . import Image, ImageFile
 

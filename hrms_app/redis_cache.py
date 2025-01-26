@@ -5,7 +5,7 @@ from __future__ import annotations
 
 
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from custom_typing import TYPE_CHECKING
 
 from pip._vendor.cachecontrol.cache import BaseCache
 

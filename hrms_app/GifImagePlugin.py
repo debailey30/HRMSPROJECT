@@ -30,8 +30,8 @@ import math
 import os
 import subprocess
 from enum import IntEnum
-from functools import cached_property
-from typing import IO, TYPE_CHECKING, Any, Literal, NamedTuple, Union
+from custom_functools import cached_property
+from custom_typing import IO, TYPE_CHECKING, Any, Literal, NamedTuple, Union
 
 from . import (
     Image,

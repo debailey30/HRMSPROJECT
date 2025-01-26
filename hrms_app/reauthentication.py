@@ -1,5 +1,5 @@
 import time
-from typing import Dict, List, Optional
+from custom_typing import Dict, List, Optional
 
 from django.contrib.auth import REDIRECT_FIELD_NAME
 from django.http import HttpRequest, HttpResponseRedirect

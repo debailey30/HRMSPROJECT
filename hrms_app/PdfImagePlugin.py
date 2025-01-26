@@ -25,7 +25,7 @@ import io
 import math
 import os
 import time
-from typing import IO, Any
+from custom_typing import IO, Any
 
 from . import Image, ImageFile, ImageSequence, PdfParser, __version__, features
 

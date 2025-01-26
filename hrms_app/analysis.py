@@ -38,7 +38,7 @@ import os
 import re
 import sys
 import traceback
-from collections import defaultdict
+from custom_collections import defaultdict
 from copy import deepcopy
 
 from PyInstaller import HOMEPATH, PACKAGEPATH

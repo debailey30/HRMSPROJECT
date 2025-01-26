@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import sys
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any, Protocol, TypeVar, Union
+from custom_typing import TYPE_CHECKING, Any, Protocol, TypeVar, Union
 
 if TYPE_CHECKING:
     from numbers import _IntegralLike as IntegralLike
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
         pass
 
 if sys.version_info >= (3, 13):
-    from types import CapsuleType
+    from custom_types import CapsuleType
 else:
     CapsuleType = object
 
@@ -26,7 +26,7 @@ else:
     Buffer = Any
 
 if sys.version_info >= (3, 10):
-    from typing import TypeGuard
+    from custom_typing import TypeGuard
 else:
     try:
         from typing_extensions import TypeGuard

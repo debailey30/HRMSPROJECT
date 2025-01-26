@@ -1,4 +1,4 @@
-from functools import lru_cache
+from custom_functools import lru_cache
 
 from django import template
 from django.conf import settings

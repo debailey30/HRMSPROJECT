@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import io
 import struct
-from typing import IO
+from custom_typing import IO
 
 from . import Image, ImageFile
 from ._binary import i16le as i16

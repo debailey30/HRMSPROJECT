@@ -1,5 +1,5 @@
 import time
-from typing import Any, Dict, Optional, Tuple
+from custom_typing import Any, Dict, Optional, Tuple
 
 from allauth.socialaccount.adapter import get_adapter
 

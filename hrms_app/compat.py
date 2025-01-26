@@ -1,85 +1,80 @@
-from __future__ import annotations
+"""
+requests.compat
+~~~~~~~~~~~~~~~
 
-import functools
-from pathlib import Path
-from typing import Any
-from typing import Mapping
-import warnings
+This module previously handled import compatibility issues
+between Python 2 and Python 3. It remains for backwards
+compatibility until the next major version.
+"""
 
-import pluggy
+import sys
 
-from ..compat import LEGACY_PATH
-from ..compat import legacy_path
-from ..deprecated import HOOK_LEGACY_PATH_ARG
+# -------
+# Pythons
+# -------
+builtin_str = str
+str = str
+bytes = bytes
+basestring = (str, bytes)
+numeric_types = (int, float)
+integer_types = (int,)
 
+# Syntax sugar.
+_ver = sys.version_info
 
-# hookname: (Path, LEGACY_PATH)
-imply_paths_hooks: Mapping[str, tuple[str, str]] = {
-    "pytest_ignore_collect": ("collection_path", "path"),
-    "pytest_collect_file": ("file_path", "path"),
-    "pytest_pycollect_makemodule": ("module_path", "path"),
-    "pytest_report_header": ("start_path", "startdir"),
-    "pytest_report_collectionfinish": ("start_path", "startdir"),
-}
+#: Python 2.x?
+is_py2 = _ver[0] == 2
 
+#: Python 3.x?
+is_py3 = _ver[0] == 3
 
-def _check_path(path: Path, fspath: LEGACY_PATH) -> None:
-    if Path(fspath) != path:
-        raise ValueError(
-            f"Path({fspath!r}) != {path!r}\n"
-            "if both path and fspath are given they need to be equal"
-        )
+# Note: We've patched out simplejson support in pip because it prevents
+#       upgrading simplejson on Windows.
+import json
+from json import JSONDecodeError
 
+# Keep OrderedDict for backwards compatibility.
+from collections import OrderedDict
+from collections.abc import Callable, Mapping, MutableMapping
+from http import cookiejar as cookielib
+from http.cookies import Morsel
+from io import StringIO
 
-class PathAwareHookProxy:
-    """
-    this helper wraps around hook callers
-    until pluggy supports fixingcalls, this one will do
+# --------------
+# Legacy Imports
+# --------------
+from urllib.parse import (
+    quote,
+    quote_plus,
+    unquote,
+    unquote_plus,
+    urldefrag,
+    urlencode,
+    urljoin,
+    urlparse,
+    urlsplit,
+    urlunparse,
+)
+from urllib.request import (
+    getproxies,
+    getproxies_environment,
+    parse_http_list,
+    proxy_bypass,
+    proxy_bypass_environment,
+)
 
-    it currently doesn't return full hook caller proxies for fixed hooks,
-    this may have to be changed later depending on bugs
-    """
+from typing import Optional
+from django.contrib import admin
+from django.urls import path
 
-    def __init__(self, hook_relay: pluggy.HookRelay) -> None:
-        self._hook_relay = hook_relay
+urlpatterns = [
+    path('admin/', admin.site.urls),
+]
 
-    def __dir__(self) -> list[str]:
-        return dir(self._hook_relay)
+# hrms_app/url.py
+from HRMSPROJECT.compat import WINDOWS  # Update this import statement
 
-    def __getattr__(self, key: str) -> pluggy.HookCaller:
-        hook: pluggy.HookCaller = getattr(self._hook_relay, key)
-        if key not in imply_paths_hooks:
-            self.__dict__[key] = hook
-            return hook
-        else:
-            path_var, fspath_var = imply_paths_hooks[key]
+# filepath: /c:/Users/DeeAnn/Desktop/HRMSPROJECT/hrms_app/compat.py
+import chardet
 
-            @functools.wraps(hook)
-            def fixed_hook(**kw: Any) -> Any:
-                path_value: Path | None = kw.pop(path_var, None)
-                fspath_value: LEGACY_PATH | None = kw.pop(fspath_var, None)
-                if fspath_value is not None:
-                    warnings.warn(
-                        HOOK_LEGACY_PATH_ARG.format(
-                            pylib_path_arg=fspath_var, pathlib_path_arg=path_var
-                        ),
-                        stacklevel=2,
-                    )
-                if path_value is not None:
-                    if fspath_value is not None:
-                        _check_path(path_value, fspath_value)
-                    else:
-                        fspath_value = legacy_path(path_value)
-                else:
-                    assert fspath_value is not None
-                    path_value = Path(fspath_value)
-
-                kw[path_var] = path_value
-                kw[fspath_var] = fspath_value
-                return hook(**kw)
-
-            fixed_hook.name = hook.name  # type: ignore[attr-defined]
-            fixed_hook.spec = hook.spec  # type: ignore[attr-defined]
-            fixed_hook.__name__ = key
-            self.__dict__[key] = fixed_hook
-            return fixed_hook  # type: ignore[return-value]
+# Other imports and code...

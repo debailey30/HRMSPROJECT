@@ -1,7 +1,7 @@
 import logging
 import os
 import re
-from typing import List, Optional, Tuple
+from custom_typing import List, Optional, Tuple
 
 from pip._internal.utils.misc import (
     HiddenText,
@@ -288,12 +288,12 @@ class Subversion(VersionControl):
             display_path(dest),
         )
         if verbosity <= 0:
-            flags = ["--quiet"]
+            flag = "--quiet"
         else:
-            flags = []
+            flag = ""
         cmd_args = make_command(
             "checkout",
-            *flags,
+            flag,
             self.get_remote_call_options(),
             rev_options.to_args(),
             url,

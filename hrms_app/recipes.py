@@ -8,7 +8,7 @@ Some backward-compatible usability improvements have been made.
 
 """
 import warnings
-from collections import deque
+from custom_collections import deque
 from itertools import (
     chain,
     combinations,

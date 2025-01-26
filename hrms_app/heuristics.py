@@ -7,7 +7,7 @@ import calendar
 import time
 from datetime import datetime, timedelta, timezone
 from email.utils import formatdate, parsedate, parsedate_tz
-from typing import TYPE_CHECKING, Any, Mapping
+from custom_typing import TYPE_CHECKING, Any, Mapping
 
 if TYPE_CHECKING:
     from pip._vendor.urllib3 import HTTPResponse
@@ -68,7 +68,7 @@ class OneDayCache(BaseHeuristic):
 
         if "expires" not in response.headers:
             date = parsedate(response.headers["date"])
-            expires = expire_after(timedelta(days=1), date=datetime(*date[:6], tzinfo=timezone.utc))  # type: ignore[index,misc]
+            expires = expire_after(timedelta(days=1), date=datetime(*date[:6], tzinfo=timezone.utc))  # type: ignore[misc]
             headers["expires"] = datetime_to_header(expires)
             headers["cache-control"] = "public"
         return headers

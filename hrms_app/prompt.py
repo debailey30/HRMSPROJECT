@@ -1,4 +1,4 @@
-from typing import Any, Generic, List, Optional, TextIO, TypeVar, Union, overload
+from custom_typing import Any, Generic, List, Optional, TextIO, TypeVar, Union, overload
 
 from . import get_console
 from .console import Console
@@ -307,7 +307,7 @@ class IntPrompt(PromptBase[int]):
     validate_error_message = "[prompt.invalid]Please enter a valid integer number"
 
 
-class FloatPrompt(PromptBase[float]):
+class FloatPrompt(PromptBase[int]):
     """A prompt that returns a float.
 
     Example:
@@ -346,6 +346,7 @@ class Confirm(PromptBase[bool]):
 
 
 if __name__ == "__main__":  # pragma: no cover
+
     from pip._vendor.rich import print
 
     if Confirm.ask("Run [i]prompt[/i] tests?", default=True):

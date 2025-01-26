@@ -1,9 +1,9 @@
 import sys
 import time
-from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Union
+from custom_typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Union
 
 if sys.version_info >= (3, 8):
-    from typing import Final
+    from custom_typing import Final
 else:
     from pip._vendor.typing_extensions import Final  # pragma: no cover
 

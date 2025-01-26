@@ -4,7 +4,7 @@ Build .egg distributions"""
 
 from distutils.dir_util import remove_tree, mkpath
 from distutils import log
-from types import CodeType
+from custom_types import CodeType
 import sys
 import os
 import re

@@ -1,5 +1,5 @@
 import os
-from typing import Union
+from custom_typing import Union
 
 _Path = Union[str, os.PathLike]
 

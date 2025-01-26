@@ -1,4 +1,4 @@
-from typing import NamedTuple, Tuple
+from custom_typing import NamedTuple, Tuple
 
 
 class ColorTriplet(NamedTuple):

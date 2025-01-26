@@ -17,7 +17,7 @@ import tempfile
 import typing as t
 from hashlib import sha1
 from io import BytesIO
-from types import CodeType
+from custom_types import CodeType
 
 if t.TYPE_CHECKING:
     import typing_extensions as te

@@ -1,53 +1,104 @@
-#
-# (C) Copyright 2014 Enthought, Inc., Austin, TX
-# All right reserved.
-#
-# This file is open source software distributed according to the terms in
-# LICENSE.txt
-#
-import ctypes
-import sys
-from ctypes import (
-    pythonapi, POINTER, c_void_p, py_object, c_char_p, c_int, c_long, c_int64,
-    c_longlong)
-from ctypes import cast  # noqa imported here for convenience
-from ctypes.wintypes import BYTE
+import os
+import pathlib
+import tempfile
+import functools
+import contextlib
+import types
+import importlib
 
-from ._util import function_factory
+from custom_typing import Union, Optional
+from .abc import ResourceReader, Traversable
 
-PPy_UNICODE = c_void_p
-LPBYTE = POINTER(BYTE)
-is_64bits = sys.maxsize > 2**32
-Py_ssize_t = c_int64 if is_64bits else c_int
+from ._compat import wrap_spec
 
-if ctypes.sizeof(c_long) == ctypes.sizeof(c_void_p):
-    LONG_PTR = c_long
-elif ctypes.sizeof(c_longlong) == ctypes.sizeof(c_void_p):
-    LONG_PTR = c_longlong
-
-_PyBytes_FromStringAndSize = function_factory(
-    pythonapi.PyBytes_FromStringAndSize,
-    [c_char_p, Py_ssize_t],
-    return_type=py_object)
+Package = Union[types.ModuleType, str]
 
 
-def IS_INTRESOURCE(x):
-    return x >> 16 == 0
+def files(package):
+    # type: (Package) -> Traversable
+    """
+    Get a Traversable resource from a package
+    """
+    return from_package(get_package(package))
 
 
-byreference = ctypes.byref
+def get_resource_reader(package):
+    # type: (types.ModuleType) -> Optional[ResourceReader]
+    """
+    Return the package's loader if it's a ResourceReader.
+    """
+    # We can't use
+    # a issubclass() check here because apparently abc.'s __subclasscheck__()
+    # hook wants to create a weak reference to the object, but
+    # zipimport.zipimporter does not support weak references, resulting in a
+    # TypeError.  That seems terrible.
+    spec = package.__spec__
+    reader = getattr(spec.loader, 'get_resource_reader', None)  # type: ignore
+    if reader is None:
+        return None
+    return reader(spec.name)  # type: ignore
 
 
-def dereference(x):
-    return x.contents
+def resolve(cand):
+    # type: (Package) -> types.ModuleType
+    return cand if isinstance(cand, types.ModuleType) else importlib.import_module(cand)
 
 
-class Libraries(object):
+def get_package(package):
+    # type: (Package) -> types.ModuleType
+    """Take a package name or module object and return the module.
 
-    def __getattr__(self, name):
-        library = ctypes.WinDLL(name)
-        self.__dict__[name] = library
-        return library
+    Raise an exception if the resolved module is not a package.
+    """
+    resolved = resolve(package)
+    if wrap_spec(resolved).submodule_search_locations is None:
+        raise TypeError(f'{package!r} is not a package')
+    return resolved
 
 
-dlls = Libraries()
+def from_package(package):
+    """
+    Return a Traversable object for the given package.
+
+    """
+    spec = wrap_spec(package)
+    reader = spec.loader.get_resource_reader(spec.name)
+    return reader.files()
+
+
+@contextlib.contextmanager
+def _tempfile(reader, suffix=''):
+    # Not using tempfile.NamedTemporaryFile as it leads to deeper 'try'
+    # blocks due to the need to close the temporary file to work on Windows
+    # properly.
+    fd, raw_path = tempfile.mkstemp(suffix=suffix)
+    try:
+        try:
+            os.write(fd, reader())
+        finally:
+            os.close(fd)
+        del reader
+        yield pathlib.Path(raw_path)
+    finally:
+        try:
+            os.remove(raw_path)
+        except FileNotFoundError:
+            pass
+
+
+@functools.singledispatch
+def as_file(path):
+    """
+    Given a Traversable object, return that object as a
+    path on the local file system in a context manager.
+    """
+    return _tempfile(path.read_bytes, suffix=path.name)
+
+
+@as_file.register(pathlib.Path)
+@contextlib.contextmanager
+def _(path):
+    """
+    Degenerate behavior for pathlib.Path objects.
+    """
+    yield path

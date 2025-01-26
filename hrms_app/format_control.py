@@ -1,4 +1,4 @@
-from typing import FrozenSet, Optional, Set
+from custom_typing import FrozenSet, Optional, Set
 
 from pip._vendor.packaging.utils import canonicalize_name
 

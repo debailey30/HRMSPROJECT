@@ -30,8 +30,8 @@ import string
 import mmap
 import uuid
 
-from collections import Counter
-from typing import Union
+from custom_collections import Counter
+from custom_typing import Union
 from hashlib import sha1
 from hashlib import sha256
 from hashlib import sha512

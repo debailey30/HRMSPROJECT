@@ -1,7 +1,7 @@
 import hashlib
 import time
-from collections import namedtuple
-from typing import Optional
+from custom_collections import namedtuple
+from custom_typing import Optional
 
 from django.conf import settings
 from django.core.cache import cache

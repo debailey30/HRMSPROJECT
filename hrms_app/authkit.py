@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from typing import Any, Dict, Optional
+from custom_typing import Any, Dict, Optional
 
 from django.utils.functional import SimpleLazyObject, empty
 

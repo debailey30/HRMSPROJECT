@@ -6,7 +6,7 @@ init_logging() must be called before any other modules that call logging.getLogg
 """
 
 import logging
-from typing import Any, cast
+from custom_typing import Any, cast
 
 # custom log level for `--verbose` output
 # between DEBUG and INFO

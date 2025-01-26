@@ -5,8 +5,8 @@ import os
 import re
 import sys
 import warnings
-
-from asgiref.local import Local
+from custom_collections import OrderedDict
+from threading import local
 
 from django.apps import apps
 from django.conf import settings
@@ -14,15 +14,14 @@ from django.conf.locale import LANG_INFO
 from django.core.exceptions import AppRegistryNotReady
 from django.core.signals import setting_changed
 from django.dispatch import receiver
-from django.utils.regex_helper import _lazy_re_compile
 from django.utils.safestring import SafeData, mark_safe
 
-from . import to_language, to_locale
+from . import LANGUAGE_SESSION_KEY, to_language, to_locale
 
 # Translations are cached in a dictionary for every language.
 # The active translations are stored by threadid to make them thread local.
 _translations = {}
-_active = Local()
+_active = local()
 
 # The default translation is based on the settings file.
 _default = None
@@ -30,25 +29,20 @@ _default = None
 # magic gettext number to separate context from message
 CONTEXT_SEPARATOR = "\x04"
 
-# Maximum number of characters that will be parsed from the Accept-Language
-# header to prevent possible denial of service or memory exhaustion attacks.
-# About 10x longer than the longest value shown on MDN’s Accept-Language page.
-ACCEPT_LANGUAGE_HEADER_MAX_LENGTH = 500
-
 # Format of Accept-Language header values. From RFC 2616, section 14.4 and 3.9
 # and RFC 3066, section 2.1
-accept_language_re = _lazy_re_compile(r'''
+accept_language_re = re.compile(r'''
         ([A-Za-z]{1,8}(?:-[A-Za-z0-9]{1,8})*|\*)      # "en", "en-au", "x-y-z", "es-419", "*"
         (?:\s*;\s*q=(0(?:\.\d{,3})?|1(?:\.0{,3})?))?  # Optional "q=1.00", "q=0.8"
         (?:\s*,\s*|$)                                 # Multiple accepts per header.
         ''', re.VERBOSE)
 
-language_code_re = _lazy_re_compile(
+language_code_re = re.compile(
     r'^[a-z]{1,8}(?:-[a-z0-9]{1,8})*(?:@[a-z0-9]{1,20})?$',
     re.IGNORECASE
 )
 
-language_code_prefix_re = _lazy_re_compile(r'^/(\w+([@-]\w+)?)(/|$)')
+language_code_prefix_re = re.compile(r'^/(\w+([@-]\w+)?)(/|$)')
 
 
 @receiver(setting_changed)
@@ -162,7 +156,7 @@ class DjangoTranslation(gettext_module.GNUTranslations):
         self._add_local_translations()
         if self.__language == settings.LANGUAGE_CODE and self.domain == 'django' and self._catalog is None:
             # default lang should have at least one translation file available.
-            raise OSError('No translation files found for default language %s.' % settings.LANGUAGE_CODE)
+            raise IOError("No translation files found for default language %s." % settings.LANGUAGE_CODE)
         self._add_fallback(localedirs)
         if self._catalog is None:
             # No catalogs found for this language, set an empty catalog.
@@ -460,9 +454,9 @@ def check_for_language(lang_code):
 @functools.lru_cache()
 def get_languages():
     """
-    Cache of settings.LANGUAGES in a dictionary for easy lookups by key.
+    Cache of settings.LANGUAGES in an OrderedDict for easy lookups by key.
     """
-    return dict(settings.LANGUAGES)
+    return OrderedDict(settings.LANGUAGES)
 
 
 @functools.lru_cache(maxsize=1000)
@@ -510,7 +504,7 @@ def get_language_from_path(path, strict=False):
     regex_match = language_code_prefix_re.match(path)
     if not regex_match:
         return None
-    lang_code = regex_match[1]
+    lang_code = regex_match.group(1)
     try:
         return get_supported_language_variant(lang_code, strict=strict)
     except LookupError:
@@ -532,9 +526,14 @@ def get_language_from_request(request, check_path=False):
         if lang_code is not None:
             return lang_code
 
+    supported_lang_codes = get_languages()
+
+    if hasattr(request, 'session'):
+        lang_code = request.session.get(LANGUAGE_SESSION_KEY)
+        if lang_code in supported_lang_codes and lang_code is not None and check_for_language(lang_code):
+            return lang_code
+
     lang_code = request.COOKIES.get(settings.LANGUAGE_COOKIE_NAME)
-    if lang_code is not None and lang_code in get_languages() and check_for_language(lang_code):
-        return lang_code
 
     try:
         return get_supported_language_variant(lang_code)
@@ -561,7 +560,7 @@ def get_language_from_request(request, check_path=False):
 
 
 @functools.lru_cache(maxsize=1000)
-def _parse_accept_lang_header(lang_string):
+def parse_accept_lang_header(lang_string):
     """
     Parse the lang_string, which is the body of an HTTP Accept-Language
     header, and return a tuple of (lang, q-value), ordered by 'q' values.
@@ -583,28 +582,3 @@ def _parse_accept_lang_header(lang_string):
         result.append((lang, priority))
     result.sort(key=lambda k: k[1], reverse=True)
     return tuple(result)
-
-
-def parse_accept_lang_header(lang_string):
-    """
-    Parse the value of the Accept-Language header up to a maximum length.
-
-    The value of the header is truncated to a maximum length to avoid potential
-    denial of service and memory exhaustion attacks. Excessive memory could be
-    used if the raw value is very large as it would be cached due to the use of
-    functools.lru_cache() to avoid repetitive parsing of common header values.
-    """
-    # If the header value doesn't exceed the maximum allowed length, parse it.
-    if len(lang_string) <= ACCEPT_LANGUAGE_HEADER_MAX_LENGTH:
-        return _parse_accept_lang_header(lang_string)
-
-    # If there is at least one comma in the value, parse up to the last comma
-    # before the max length, skipping any truncated parts at the end of the
-    # header value.
-    index = lang_string.rfind(",", 0, ACCEPT_LANGUAGE_HEADER_MAX_LENGTH)
-    if index > 0:
-        return _parse_accept_lang_header(lang_string[:index])
-
-    # Don't attempt to parse if there is only one language-range value which is
-    # longer than the maximum allowed length and so truncated.
-    return ()

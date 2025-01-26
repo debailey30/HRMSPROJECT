@@ -37,7 +37,7 @@ from __future__ import annotations
 import os
 import struct
 import sys
-from typing import IO, TYPE_CHECKING, Any, cast
+from custom_typing import IO, TYPE_CHECKING, Any, cast
 
 from . import Image, ImageFile
 

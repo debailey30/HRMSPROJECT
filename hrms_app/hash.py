@@ -2,7 +2,7 @@ import hashlib
 import logging
 import sys
 from optparse import Values
-from typing import List
+from custom_typing import List
 
 from pip._internal.cli.base_command import Command
 from pip._internal.cli.status_codes import ERROR, SUCCESS

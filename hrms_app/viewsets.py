@@ -16,8 +16,8 @@ automatically.
     router.register(r'users', UserViewSet, 'user')
     urlpatterns = router.urls
 """
-from functools import update_wrapper
-from inspect import getmembers
+from custom_functools import update_wrapper
+from custom_inspect import getmembers
 
 from django.urls import NoReverseMatch
 from django.utils.decorators import classonlymethod

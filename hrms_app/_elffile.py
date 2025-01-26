@@ -13,7 +13,7 @@ from __future__ import annotations
 import enum
 import os
 import struct
-from typing import IO
+from custom_typing import IO
 
 
 class ELFInvalid(ValueError):

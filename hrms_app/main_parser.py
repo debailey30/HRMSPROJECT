@@ -4,7 +4,7 @@
 import os
 import subprocess
 import sys
-from typing import List, Optional, Tuple
+from custom_typing import List, Optional, Tuple
 
 from pip._internal.build_env import get_runnable_pip
 from pip._internal.cli import cmdoptions

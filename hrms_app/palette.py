@@ -1,6 +1,6 @@
 from math import sqrt
-from functools import lru_cache
-from typing import Sequence, Tuple, TYPE_CHECKING
+from custom_functools import lru_cache
+from custom_typing import Sequence, Tuple, TYPE_CHECKING
 
 from .color_triplet import ColorTriplet
 
@@ -74,7 +74,7 @@ class Palette:
 
 if __name__ == "__main__":  # pragma: no cover
     import colorsys
-    from typing import Iterable
+    from custom_typing import Iterable
     from pip._vendor.rich.color import Color
     from pip._vendor.rich.console import Console, ConsoleOptions
     from pip._vendor.rich.segment import Segment

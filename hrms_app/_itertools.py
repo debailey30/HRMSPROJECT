@@ -1,6 +1,6 @@
 from itertools import filterfalse
 
-from typing import (
+from custom_typing import (
     Callable,
     Iterable,
     Iterator,

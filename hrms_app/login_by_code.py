@@ -1,5 +1,5 @@
 import time
-from typing import Any, Dict, Optional, Tuple
+from custom_typing import Any, Dict, Optional, Tuple
 
 from django.contrib import messages
 from django.contrib.auth import get_user_model

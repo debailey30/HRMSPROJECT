@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import array
 from collections.abc import Sequence
-from typing import IO, TYPE_CHECKING
+from custom_typing import IO, TYPE_CHECKING
 
 from . import GimpGradientFile, GimpPaletteFile, ImageColor, PaletteFile
 

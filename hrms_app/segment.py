@@ -1,9 +1,9 @@
 from enum import IntEnum
-from functools import lru_cache
+from custom_functools import lru_cache
 from itertools import filterfalse
-from logging import getLogger
+from custom_logging import getLogger
 from operator import attrgetter
-from typing import (
+from custom_typing import (
     TYPE_CHECKING,
     Dict,
     Iterable,
@@ -109,6 +109,7 @@ class Segment(NamedTuple):
     @classmethod
     @lru_cache(1024 * 16)
     def _split_cells(cls, segment: "Segment", cut: int) -> Tuple["Segment", "Segment"]:
+
         text, style, control = segment
         _Segment = Segment
 

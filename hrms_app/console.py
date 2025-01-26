@@ -7,15 +7,15 @@ import zlib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
-from functools import wraps
+from custom_functools import wraps
 from getpass import getpass
 from html import escape
-from inspect import isclass
+from custom_inspect import isclass
 from itertools import islice
 from math import ceil
 from time import monotonic
-from types import FrameType, ModuleType, TracebackType
-from typing import (
+from custom_types import FrameType, ModuleType, TracebackType
+from custom_typing import (
     IO,
     TYPE_CHECKING,
     Any,
@@ -36,7 +36,7 @@ from typing import (
 from pip._vendor.rich._null_file import NULL_FILE
 
 if sys.version_info >= (3, 8):
-    from typing import Literal, Protocol, runtime_checkable
+    from custom_typing import Literal, Protocol, runtime_checkable
 else:
     from pip._vendor.typing_extensions import (
         Literal,
@@ -278,7 +278,6 @@ class ConsoleRenderable(Protocol):
 
 # A type that may be rendered by Console.
 RenderableType = Union[ConsoleRenderable, RichCast, str]
-"""A string or any object that may be rendered by Rich."""
 
 # The result of calling a __rich_console__ method.
 RenderResult = Iterable[Union[RenderableType, Segment]]
@@ -1926,6 +1925,7 @@ class Console:
             end (str, optional): String to write at end of print data. Defaults to "\\\\n".
             style (Union[str, Style], optional): A style to apply to output. Defaults to None.
             justify (str, optional): One of "left", "right", "center", or "full". Defaults to ``None``.
+            overflow (str, optional): Overflow method: "crop", "fold", or "ellipsis". Defaults to None.
             emoji (Optional[bool], optional): Enable emoji code, or ``None`` to use console default. Defaults to None.
             markup (Optional[bool], optional): Enable markup, or ``None`` to use console default. Defaults to None.
             highlight (Optional[bool], optional): Enable automatic highlighting, or ``None`` to use console default. Defaults to None.

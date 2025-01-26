@@ -5,7 +5,7 @@ __all__ = ["HTTPRangeRequestUnsupported", "dist_from_wheel_url"]
 from bisect import bisect_left, bisect_right
 from contextlib import contextmanager
 from tempfile import NamedTemporaryFile
-from typing import Any, Dict, Generator, List, Optional, Tuple
+from custom_typing import Any, Dict, Generator, List, Optional, Tuple
 from zipfile import BadZipFile, ZipFile
 
 from pip._vendor.packaging.utils import canonicalize_name
@@ -159,7 +159,7 @@ class LazyZipOverHTTP:
                 try:
                     # For read-only ZIP files, ZipFile only needs
                     # methods read, seek, seekable and tell.
-                    ZipFile(self)
+                    ZipFile(self)  # type: ignore
                 except BadZipFile:
                     pass
                 else:

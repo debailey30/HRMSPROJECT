@@ -1,5 +1,5 @@
 import configparser
-from typing import Dict, List, IO, Mapping, Optional
+from custom_typing import Dict, List, IO, Mapping, Optional
 
 from .default_styles import DEFAULT_STYLES
 from .style import Style, StyleType

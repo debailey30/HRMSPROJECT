@@ -5,7 +5,7 @@ import optparse
 import os
 import sys
 from itertools import chain
-from typing import Any, Iterable, List, Optional
+from custom_typing import Any, Iterable, List, Optional
 
 from pip._internal.cli.main_parser import create_main_parser
 from pip._internal.commands import commands_dict, create_command
@@ -16,10 +16,6 @@ def autocomplete() -> None:
     """Entry Point for completion of main and subcommand options."""
     # Don't complete if user hasn't sourced bash_completion file.
     if "PIP_AUTO_COMPLETE" not in os.environ:
-        return
-    # Don't complete if autocompletion environment variables
-    # are not present
-    if not os.environ.get("COMP_WORDS") or not os.environ.get("COMP_CWORD"):
         return
     cwords = os.environ["COMP_WORDS"].split()[1:]
     cword = int(os.environ["COMP_CWORD"])

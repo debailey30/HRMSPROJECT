@@ -23,12 +23,7 @@ from io import BytesIO
 from time import time
 from zlib import adler32
 
-from ..http import http_date
-from ..http import is_resource_modified
-from ..security import safe_join
-from ..utils import get_content_type
-from ..wsgi import get_path_info
-from ..wsgi import wrap_file
+from .shared import http_date, is_resource_modified, safe_join, get_content_type, get_path_info
 
 _TOpener = t.Callable[[], tuple[t.IO[bytes], datetime, int]]
 _TLoader = t.Callable[[t.Optional[str]], tuple[t.Optional[str], t.Optional[_TOpener]]]

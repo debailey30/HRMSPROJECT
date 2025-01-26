@@ -1,4 +1,4 @@
-from typing import Optional
+from custom_typing import Optional
 
 
 def pick_bool(*values: Optional[bool]) -> bool:

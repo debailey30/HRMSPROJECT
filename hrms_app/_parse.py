@@ -1,7 +1,7 @@
 from __future__ import annotations
 from .exceptions import ParseError
 
-from typing import NamedTuple
+from custom_typing import NamedTuple
 
 
 COMMENTCHARS = "#;"

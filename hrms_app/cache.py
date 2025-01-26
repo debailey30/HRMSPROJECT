@@ -9,7 +9,7 @@ safe in-memory dictionary.
 from __future__ import annotations
 
 from threading import Lock
-from typing import IO, TYPE_CHECKING, MutableMapping
+from custom_typing import IO, TYPE_CHECKING, MutableMapping
 
 if TYPE_CHECKING:
     from datetime import datetime

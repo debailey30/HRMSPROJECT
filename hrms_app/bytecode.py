@@ -18,8 +18,8 @@ defined once then simply referenced forming a nice hierarchy rather than copied 
 
 import dis
 import re
-from types import CodeType
-from typing import Pattern
+from custom_types import CodeType
+from custom_typing import Pattern
 
 from PyInstaller import compat
 

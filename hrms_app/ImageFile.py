@@ -34,7 +34,7 @@ import itertools
 import os
 import struct
 import sys
-from typing import IO, TYPE_CHECKING, Any, NamedTuple, cast
+from custom_typing import IO, TYPE_CHECKING, Any, NamedTuple, cast
 
 from . import Image
 from ._deprecate import deprecate

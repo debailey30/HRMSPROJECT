@@ -2,8 +2,8 @@ import platform
 import re
 from colorsys import rgb_to_hls
 from enum import IntEnum
-from functools import lru_cache
-from typing import TYPE_CHECKING, NamedTuple, Optional, Tuple
+from custom_functools import lru_cache
+from custom_typing import TYPE_CHECKING, NamedTuple, Optional, Tuple
 
 from ._palettes import EIGHT_BIT_PALETTE, STANDARD_PALETTE, WINDOWS_PALETTE
 from .color_triplet import ColorTriplet
@@ -592,6 +592,7 @@ def blend_rgb(
 
 
 if __name__ == "__main__":  # pragma: no cover
+
     from .console import Console
     from .table import Table
     from .text import Text

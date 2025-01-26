@@ -1,357 +1,334 @@
-import builtins
-import collections.abc
-import datetime
-import decimal
-import enum
-import functools
-import math
-import os
-import pathlib
+from __future__ import absolute_import, division, unicode_literals
+from pip._vendor.six import text_type
+
 import re
-import types
-import uuid
 
-from django.conf import SettingsReference
-from django.db import models
-from django.db.migrations.operations.base import Operation
-from django.db.migrations.utils import COMPILED_REGEX_TYPE, RegexObject
-from django.utils.functional import LazyObject, Promise
-from django.utils.timezone import utc
-from django.utils.version import get_docs_version
+from codecs import register_error, xmlcharrefreplace_errors
 
+from .constants import voidElements, booleanAttributes, spaceCharacters
+from .constants import rcdataElements, entities, xmlEntities
+from . import treewalkers, _utils
+from xml.sax.saxutils import escape
 
-class BaseSerializer:
-    def __init__(self, value):
-        self.value = value
-
-    def serialize(self):
-        raise NotImplementedError('Subclasses of BaseSerializer must implement the serialize() method.')
-
-
-class BaseSequenceSerializer(BaseSerializer):
-    def _format(self):
-        raise NotImplementedError('Subclasses of BaseSequenceSerializer must implement the _format() method.')
-
-    def serialize(self):
-        imports = set()
-        strings = []
-        for item in self.value:
-            item_string, item_imports = serializer_factory(item).serialize()
-            imports.update(item_imports)
-            strings.append(item_string)
-        value = self._format()
-        return value % (", ".join(strings)), imports
+_quoteAttributeSpecChars = "".join(spaceCharacters) + "\"'=<>`"
+_quoteAttributeSpec = re.compile("[" + _quoteAttributeSpecChars + "]")
+_quoteAttributeLegacy = re.compile("[" + _quoteAttributeSpecChars +
+                                   "\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n"
+                                   "\x0b\x0c\r\x0e\x0f\x10\x11\x12\x13\x14\x15"
+                                   "\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f"
+                                   "\x20\x2f\x60\xa0\u1680\u180e\u180f\u2000"
+                                   "\u2001\u2002\u2003\u2004\u2005\u2006\u2007"
+                                   "\u2008\u2009\u200a\u2028\u2029\u202f\u205f"
+                                   "\u3000]")
 
 
-class BaseSimpleSerializer(BaseSerializer):
-    def serialize(self):
-        return repr(self.value), set()
-
-
-class ChoicesSerializer(BaseSerializer):
-    def serialize(self):
-        return serializer_factory(self.value.value).serialize()
-
-
-class DateTimeSerializer(BaseSerializer):
-    """For datetime.*, except datetime.datetime."""
-    def serialize(self):
-        return repr(self.value), {'import datetime'}
-
-
-class DatetimeDatetimeSerializer(BaseSerializer):
-    """For datetime.datetime."""
-    def serialize(self):
-        if self.value.tzinfo is not None and self.value.tzinfo != utc:
-            self.value = self.value.astimezone(utc)
-        imports = ["import datetime"]
-        if self.value.tzinfo is not None:
-            imports.append("from django.utils.timezone import utc")
-        return repr(self.value).replace('<UTC>', 'utc'), set(imports)
-
-
-class DecimalSerializer(BaseSerializer):
-    def serialize(self):
-        return repr(self.value), {"from decimal import Decimal"}
-
-
-class DeconstructableSerializer(BaseSerializer):
-    @staticmethod
-    def serialize_deconstructed(path, args, kwargs):
-        name, imports = DeconstructableSerializer._serialize_path(path)
-        strings = []
-        for arg in args:
-            arg_string, arg_imports = serializer_factory(arg).serialize()
-            strings.append(arg_string)
-            imports.update(arg_imports)
-        for kw, arg in sorted(kwargs.items()):
-            arg_string, arg_imports = serializer_factory(arg).serialize()
-            imports.update(arg_imports)
-            strings.append("%s=%s" % (kw, arg_string))
-        return "%s(%s)" % (name, ", ".join(strings)), imports
-
-    @staticmethod
-    def _serialize_path(path):
-        module, name = path.rsplit(".", 1)
-        if module == "django.db.models":
-            imports = {"from django.db import models"}
-            name = "models.%s" % name
+_encode_entity_map = {}
+_is_ucs4 = len("\U0010FFFF") == 1
+for k, v in list(entities.items()):
+    # skip multi-character entities
+    if ((_is_ucs4 and len(v) > 1) or
+            (not _is_ucs4 and len(v) > 2)):
+        continue
+    if v != "&":
+        if len(v) == 2:
+            v = _utils.surrogatePairToCodepoint(v)
         else:
-            imports = {"import %s" % module}
-            name = path
-        return name, imports
-
-    def serialize(self):
-        return self.serialize_deconstructed(*self.value.deconstruct())
+            v = ord(v)
+        if v not in _encode_entity_map or k.islower():
+            # prefer &lt; over &LT; and similarly for &amp;, &gt;, etc.
+            _encode_entity_map[v] = k
 
 
-class DictionarySerializer(BaseSerializer):
-    def serialize(self):
-        imports = set()
-        strings = []
-        for k, v in sorted(self.value.items()):
-            k_string, k_imports = serializer_factory(k).serialize()
-            v_string, v_imports = serializer_factory(v).serialize()
-            imports.update(k_imports)
-            imports.update(v_imports)
-            strings.append((k_string, v_string))
-        return "{%s}" % (", ".join("%s: %s" % (k, v) for k, v in strings)), imports
-
-
-class EnumSerializer(BaseSerializer):
-    def serialize(self):
-        enum_class = self.value.__class__
-        module = enum_class.__module__
-        return (
-            '%s.%s[%r]' % (module, enum_class.__qualname__, self.value.name),
-            {'import %s' % module},
-        )
-
-
-class FloatSerializer(BaseSimpleSerializer):
-    def serialize(self):
-        if math.isnan(self.value) or math.isinf(self.value):
-            return 'float("{}")'.format(self.value), set()
-        return super().serialize()
-
-
-class FrozensetSerializer(BaseSequenceSerializer):
-    def _format(self):
-        return "frozenset([%s])"
-
-
-class FunctionTypeSerializer(BaseSerializer):
-    def serialize(self):
-        if getattr(self.value, "__self__", None) and isinstance(self.value.__self__, type):
-            klass = self.value.__self__
-            module = klass.__module__
-            return "%s.%s.%s" % (module, klass.__name__, self.value.__name__), {"import %s" % module}
-        # Further error checking
-        if self.value.__name__ == '<lambda>':
-            raise ValueError("Cannot serialize function: lambda")
-        if self.value.__module__ is None:
-            raise ValueError("Cannot serialize function %r: No module" % self.value)
-
-        module_name = self.value.__module__
-
-        if '<' not in self.value.__qualname__:  # Qualname can include <locals>
-            return '%s.%s' % (module_name, self.value.__qualname__), {'import %s' % self.value.__module__}
-
-        raise ValueError(
-            'Could not find function %s in %s.\n' % (self.value.__name__, module_name)
-        )
-
-
-class FunctoolsPartialSerializer(BaseSerializer):
-    def serialize(self):
-        # Serialize functools.partial() arguments
-        func_string, func_imports = serializer_factory(self.value.func).serialize()
-        args_string, args_imports = serializer_factory(self.value.args).serialize()
-        keywords_string, keywords_imports = serializer_factory(self.value.keywords).serialize()
-        # Add any imports needed by arguments
-        imports = {'import functools', *func_imports, *args_imports, *keywords_imports}
-        return (
-            'functools.%s(%s, *%s, **%s)' % (
-                self.value.__class__.__name__,
-                func_string,
-                args_string,
-                keywords_string,
-            ),
-            imports,
-        )
-
-
-class IterableSerializer(BaseSerializer):
-    def serialize(self):
-        imports = set()
-        strings = []
-        for item in self.value:
-            item_string, item_imports = serializer_factory(item).serialize()
-            imports.update(item_imports)
-            strings.append(item_string)
-        # When len(strings)==0, the empty iterable should be serialized as
-        # "()", not "(,)" because (,) is invalid Python syntax.
-        value = "(%s)" if len(strings) != 1 else "(%s,)"
-        return value % (", ".join(strings)), imports
-
-
-class ModelFieldSerializer(DeconstructableSerializer):
-    def serialize(self):
-        attr_name, path, args, kwargs = self.value.deconstruct()
-        return self.serialize_deconstructed(path, args, kwargs)
-
-
-class ModelManagerSerializer(DeconstructableSerializer):
-    def serialize(self):
-        as_manager, manager_path, qs_path, args, kwargs = self.value.deconstruct()
-        if as_manager:
-            name, imports = self._serialize_path(qs_path)
-            return "%s.as_manager()" % name, imports
-        else:
-            return self.serialize_deconstructed(manager_path, args, kwargs)
-
-
-class OperationSerializer(BaseSerializer):
-    def serialize(self):
-        from django.db.migrations.writer import OperationWriter
-        string, imports = OperationWriter(self.value, indentation=0).serialize()
-        # Nested operation, trailing comma is handled in upper OperationWriter._write()
-        return string.rstrip(','), imports
-
-
-class PathLikeSerializer(BaseSerializer):
-    def serialize(self):
-        return repr(os.fspath(self.value)), {}
-
-
-class PathSerializer(BaseSerializer):
-    def serialize(self):
-        # Convert concrete paths to pure paths to avoid issues with migrations
-        # generated on one platform being used on a different platform.
-        prefix = 'Pure' if isinstance(self.value, pathlib.Path) else ''
-        return 'pathlib.%s%r' % (prefix, self.value), {'import pathlib'}
-
-
-class RegexSerializer(BaseSerializer):
-    def serialize(self):
-        regex_pattern, pattern_imports = serializer_factory(self.value.pattern).serialize()
-        # Turn off default implicit flags (e.g. re.U) because regexes with the
-        # same implicit and explicit flags aren't equal.
-        flags = self.value.flags ^ re.compile('').flags
-        regex_flags, flag_imports = serializer_factory(flags).serialize()
-        imports = {'import re', *pattern_imports, *flag_imports}
-        args = [regex_pattern]
-        if flags:
-            args.append(regex_flags)
-        return "re.compile(%s)" % ', '.join(args), imports
-
-
-class SequenceSerializer(BaseSequenceSerializer):
-    def _format(self):
-        return "[%s]"
-
-
-class SetSerializer(BaseSequenceSerializer):
-    def _format(self):
-        # Serialize as a set literal except when value is empty because {}
-        # is an empty dict.
-        return '{%s}' if self.value else 'set(%s)'
-
-
-class SettingsReferenceSerializer(BaseSerializer):
-    def serialize(self):
-        return "settings.%s" % self.value.setting_name, {"from django.conf import settings"}
-
-
-class TupleSerializer(BaseSequenceSerializer):
-    def _format(self):
-        # When len(value)==0, the empty tuple should be serialized as "()",
-        # not "(,)" because (,) is invalid Python syntax.
-        return "(%s)" if len(self.value) != 1 else "(%s,)"
-
-
-class TypeSerializer(BaseSerializer):
-    def serialize(self):
-        special_cases = [
-            (models.Model, "models.Model", []),
-            (type(None), 'type(None)', []),
-        ]
-        for case, string, imports in special_cases:
-            if case is self.value:
-                return string, set(imports)
-        if hasattr(self.value, "__module__"):
-            module = self.value.__module__
-            if module == builtins.__name__:
-                return self.value.__name__, set()
+def htmlentityreplace_errors(exc):
+    if isinstance(exc, (UnicodeEncodeError, UnicodeTranslateError)):
+        res = []
+        codepoints = []
+        skip = False
+        for i, c in enumerate(exc.object[exc.start:exc.end]):
+            if skip:
+                skip = False
+                continue
+            index = i + exc.start
+            if _utils.isSurrogatePair(exc.object[index:min([exc.end, index + 2])]):
+                codepoint = _utils.surrogatePairToCodepoint(exc.object[index:index + 2])
+                skip = True
             else:
-                return "%s.%s" % (module, self.value.__qualname__), {"import %s" % module}
+                codepoint = ord(c)
+            codepoints.append(codepoint)
+        for cp in codepoints:
+            e = _encode_entity_map.get(cp)
+            if e:
+                res.append("&")
+                res.append(e)
+                if not e.endswith(";"):
+                    res.append(";")
+            else:
+                res.append("&#x%s;" % (hex(cp)[2:]))
+        return ("".join(res), exc.end)
+    else:
+        return xmlcharrefreplace_errors(exc)
+
+register_error("htmlentityreplace", htmlentityreplace_errors)
 
 
-class UUIDSerializer(BaseSerializer):
-    def serialize(self):
-        return "uuid.%s" % repr(self.value), {"import uuid"}
+def serialize(input, tree="etree", encoding=None, **serializer_opts):
+    # XXX: Should we cache this?
+    walker = treewalkers.getTreeWalker(tree)
+    s = HTMLSerializer(**serializer_opts)
+    return s.render(walker(input), encoding)
 
 
-class Serializer:
-    _registry = {
-        # Some of these are order-dependent.
-        frozenset: FrozensetSerializer,
-        list: SequenceSerializer,
-        set: SetSerializer,
-        tuple: TupleSerializer,
-        dict: DictionarySerializer,
-        models.Choices: ChoicesSerializer,
-        enum.Enum: EnumSerializer,
-        datetime.datetime: DatetimeDatetimeSerializer,
-        (datetime.date, datetime.timedelta, datetime.time): DateTimeSerializer,
-        SettingsReference: SettingsReferenceSerializer,
-        float: FloatSerializer,
-        (bool, int, type(None), bytes, str, range): BaseSimpleSerializer,
-        decimal.Decimal: DecimalSerializer,
-        (functools.partial, functools.partialmethod): FunctoolsPartialSerializer,
-        (types.FunctionType, types.BuiltinFunctionType, types.MethodType): FunctionTypeSerializer,
-        collections.abc.Iterable: IterableSerializer,
-        (COMPILED_REGEX_TYPE, RegexObject): RegexSerializer,
-        uuid.UUID: UUIDSerializer,
-        pathlib.PurePath: PathSerializer,
-        os.PathLike: PathLikeSerializer,
-    }
+class HTMLSerializer(object):
 
-    @classmethod
-    def register(cls, type_, serializer):
-        if not issubclass(serializer, BaseSerializer):
-            raise ValueError("'%s' must inherit from 'BaseSerializer'." % serializer.__name__)
-        cls._registry[type_] = serializer
+    # attribute quoting options
+    quote_attr_values = "legacy"  # be secure by default
+    quote_char = '"'
+    use_best_quote_char = True
 
-    @classmethod
-    def unregister(cls, type_):
-        cls._registry.pop(type_)
+    # tag syntax options
+    omit_optional_tags = True
+    minimize_boolean_attributes = True
+    use_trailing_solidus = False
+    space_before_trailing_solidus = True
+
+    # escaping options
+    escape_lt_in_attrs = False
+    escape_rcdata = False
+    resolve_entities = True
+
+    # miscellaneous options
+    alphabetical_attributes = False
+    inject_meta_charset = True
+    strip_whitespace = False
+    sanitize = False
+
+    options = ("quote_attr_values", "quote_char", "use_best_quote_char",
+               "omit_optional_tags", "minimize_boolean_attributes",
+               "use_trailing_solidus", "space_before_trailing_solidus",
+               "escape_lt_in_attrs", "escape_rcdata", "resolve_entities",
+               "alphabetical_attributes", "inject_meta_charset",
+               "strip_whitespace", "sanitize")
+
+    def __init__(self, **kwargs):
+        """Initialize HTMLSerializer.
+
+        Keyword options (default given first unless specified) include:
+
+        inject_meta_charset=True|False
+          Whether it insert a meta element to define the character set of the
+          document.
+        quote_attr_values="legacy"|"spec"|"always"
+          Whether to quote attribute values that don't require quoting
+          per legacy browser behaviour, when required by the standard, or always.
+        quote_char=u'"'|u"'"
+          Use given quote character for attribute quoting. Default is to
+          use double quote unless attribute value contains a double quote,
+          in which case single quotes are used instead.
+        escape_lt_in_attrs=False|True
+          Whether to escape < in attribute values.
+        escape_rcdata=False|True
+          Whether to escape characters that need to be escaped within normal
+          elements within rcdata elements such as style.
+        resolve_entities=True|False
+          Whether to resolve named character entities that appear in the
+          source tree. The XML predefined entities &lt; &gt; &amp; &quot; &apos;
+          are unaffected by this setting.
+        strip_whitespace=False|True
+          Whether to remove semantically meaningless whitespace. (This
+          compresses all whitespace to a single space except within pre.)
+        minimize_boolean_attributes=True|False
+          Shortens boolean attributes to give just the attribute value,
+          for example <input disabled="disabled"> becomes <input disabled>.
+        use_trailing_solidus=False|True
+          Includes a close-tag slash at the end of the start tag of void
+          elements (empty elements whose end tag is forbidden). E.g. <hr/>.
+        space_before_trailing_solidus=True|False
+          Places a space immediately before the closing slash in a tag
+          using a trailing solidus. E.g. <hr />. Requires use_trailing_solidus.
+        sanitize=False|True
+          Strip all unsafe or unknown constructs from output.
+          See `html5lib user documentation`_
+        omit_optional_tags=True|False
+          Omit start/end tags that are optional.
+        alphabetical_attributes=False|True
+          Reorder attributes to be in alphabetical order.
+
+        .. _html5lib user documentation: http://code.google.com/p/html5lib/wiki/UserDocumentation
+        """
+        unexpected_args = frozenset(kwargs) - frozenset(self.options)
+        if len(unexpected_args) > 0:
+            raise TypeError("__init__() got an unexpected keyword argument '%s'" % next(iter(unexpected_args)))
+        if 'quote_char' in kwargs:
+            self.use_best_quote_char = False
+        for attr in self.options:
+            setattr(self, attr, kwargs.get(attr, getattr(self, attr)))
+        self.errors = []
+        self.strict = False
+
+    def encode(self, string):
+        assert(isinstance(string, text_type))
+        if self.encoding:
+            return string.encode(self.encoding, "htmlentityreplace")
+        else:
+            return string
+
+    def encodeStrict(self, string):
+        assert(isinstance(string, text_type))
+        if self.encoding:
+            return string.encode(self.encoding, "strict")
+        else:
+            return string
+
+    def serialize(self, treewalker, encoding=None):
+        # pylint:disable=too-many-nested-blocks
+        self.encoding = encoding
+        in_cdata = False
+        self.errors = []
+
+        if encoding and self.inject_meta_charset:
+            from .filters.inject_meta_charset import Filter
+            treewalker = Filter(treewalker, encoding)
+        # Alphabetical attributes is here under the assumption that none of
+        # the later filters add or change order of attributes; it needs to be
+        # before the sanitizer so escaped elements come out correctly
+        if self.alphabetical_attributes:
+            from .filters.alphabeticalattributes import Filter
+            treewalker = Filter(treewalker)
+        # WhitespaceFilter should be used before OptionalTagFilter
+        # for maximum efficiently of this latter filter
+        if self.strip_whitespace:
+            from .filters.whitespace import Filter
+            treewalker = Filter(treewalker)
+        if self.sanitize:
+            from .filters.sanitizer import Filter
+            treewalker = Filter(treewalker)
+        if self.omit_optional_tags:
+            from .filters.optionaltags import Filter
+            treewalker = Filter(treewalker)
+
+        for token in treewalker:
+            type = token["type"]
+            if type == "Doctype":
+                doctype = "<!DOCTYPE %s" % token["name"]
+
+                if token["publicId"]:
+                    doctype += ' PUBLIC "%s"' % token["publicId"]
+                elif token["systemId"]:
+                    doctype += " SYSTEM"
+                if token["systemId"]:
+                    if token["systemId"].find('"') >= 0:
+                        if token["systemId"].find("'") >= 0:
+                            self.serializeError("System identifer contains both single and double quote characters")
+                        quote_char = "'"
+                    else:
+                        quote_char = '"'
+                    doctype += " %s%s%s" % (quote_char, token["systemId"], quote_char)
+
+                doctype += ">"
+                yield self.encodeStrict(doctype)
+
+            elif type in ("Characters", "SpaceCharacters"):
+                if type == "SpaceCharacters" or in_cdata:
+                    if in_cdata and token["data"].find("</") >= 0:
+                        self.serializeError("Unexpected </ in CDATA")
+                    yield self.encode(token["data"])
+                else:
+                    yield self.encode(escape(token["data"]))
+
+            elif type in ("StartTag", "EmptyTag"):
+                name = token["name"]
+                yield self.encodeStrict("<%s" % name)
+                if name in rcdataElements and not self.escape_rcdata:
+                    in_cdata = True
+                elif in_cdata:
+                    self.serializeError("Unexpected child element of a CDATA element")
+                for (_, attr_name), attr_value in token["data"].items():
+                    # TODO: Add namespace support here
+                    k = attr_name
+                    v = attr_value
+                    yield self.encodeStrict(' ')
+
+                    yield self.encodeStrict(k)
+                    if not self.minimize_boolean_attributes or \
+                        (k not in booleanAttributes.get(name, tuple()) and
+                         k not in booleanAttributes.get("", tuple())):
+                        yield self.encodeStrict("=")
+                        if self.quote_attr_values == "always" or len(v) == 0:
+                            quote_attr = True
+                        elif self.quote_attr_values == "spec":
+                            quote_attr = _quoteAttributeSpec.search(v) is not None
+                        elif self.quote_attr_values == "legacy":
+                            quote_attr = _quoteAttributeLegacy.search(v) is not None
+                        else:
+                            raise ValueError("quote_attr_values must be one of: "
+                                             "'always', 'spec', or 'legacy'")
+                        v = v.replace("&", "&amp;")
+                        if self.escape_lt_in_attrs:
+                            v = v.replace("<", "&lt;")
+                        if quote_attr:
+                            quote_char = self.quote_char
+                            if self.use_best_quote_char:
+                                if "'" in v and '"' not in v:
+                                    quote_char = '"'
+                                elif '"' in v and "'" not in v:
+                                    quote_char = "'"
+                            if quote_char == "'":
+                                v = v.replace("'", "&#39;")
+                            else:
+                                v = v.replace('"', "&quot;")
+                            yield self.encodeStrict(quote_char)
+                            yield self.encode(v)
+                            yield self.encodeStrict(quote_char)
+                        else:
+                            yield self.encode(v)
+                if name in voidElements and self.use_trailing_solidus:
+                    if self.space_before_trailing_solidus:
+                        yield self.encodeStrict(" /")
+                    else:
+                        yield self.encodeStrict("/")
+                yield self.encode(">")
+
+            elif type == "EndTag":
+                name = token["name"]
+                if name in rcdataElements:
+                    in_cdata = False
+                elif in_cdata:
+                    self.serializeError("Unexpected child element of a CDATA element")
+                yield self.encodeStrict("</%s>" % name)
+
+            elif type == "Comment":
+                data = token["data"]
+                if data.find("--") >= 0:
+                    self.serializeError("Comment contains --")
+                yield self.encodeStrict("<!--%s-->" % token["data"])
+
+            elif type == "Entity":
+                name = token["name"]
+                key = name + ";"
+                if key not in entities:
+                    self.serializeError("Entity %s not recognized" % name)
+                if self.resolve_entities and key not in xmlEntities:
+                    data = entities[key]
+                else:
+                    data = "&%s;" % name
+                yield self.encodeStrict(data)
+
+            else:
+                self.serializeError(token["data"])
+
+    def render(self, treewalker, encoding=None):
+        if encoding:
+            return b"".join(list(self.serialize(treewalker, encoding)))
+        else:
+            return "".join(list(self.serialize(treewalker)))
+
+    def serializeError(self, data="XXX ERROR MESSAGE NEEDED"):
+        # XXX The idea is to make data mandatory.
+        self.errors.append(data)
+        if self.strict:
+            raise SerializeError
 
 
-def serializer_factory(value):
-    if isinstance(value, Promise):
-        value = str(value)
-    elif isinstance(value, LazyObject):
-        # The unwrapped value is returned as the first item of the arguments
-        # tuple.
-        value = value.__reduce__()[1][0]
-
-    if isinstance(value, models.Field):
-        return ModelFieldSerializer(value)
-    if isinstance(value, models.manager.BaseManager):
-        return ModelManagerSerializer(value)
-    if isinstance(value, Operation):
-        return OperationSerializer(value)
-    if isinstance(value, type):
-        return TypeSerializer(value)
-    # Anything that knows how to deconstruct itself.
-    if hasattr(value, 'deconstruct'):
-        return DeconstructableSerializer(value)
-    for type_, serializer_cls in Serializer._registry.items():
-        if isinstance(value, type_):
-            return serializer_cls(value)
-    raise ValueError(
-        "Cannot serialize: %r\nThere are some values Django cannot serialize into "
-        "migration files.\nFor more, see https://docs.djangoproject.com/en/%s/"
-        "topics/migrations/#migration-serializing" % (value, get_docs_version())
-    )
+class SerializeError(Exception):
+    """Error in serialized tree"""
+    pass

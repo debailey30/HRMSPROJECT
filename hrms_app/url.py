@@ -1,10 +1,13 @@
 from __future__ import absolute_import
 
 import re
-from collections import namedtuple
+from custom_collections import namedtuple
 
 from ..exceptions import LocationParseError
 from ..packages import six
+
+from hrms_app.custom_typing import Optional
+from HRMSPROJECT.compat import WINDOWS  # Update this import statement
 
 url_attrs = ["scheme", "auth", "host", "port", "path", "query", "fragment"]
 
@@ -433,3 +436,11 @@ def get_host(url):
     """
     p = parse_url(url)
     return p.scheme or "http", p.hostname, p.port
+
+# filepath: /c:/Users/DeeAnn/Desktop/HRMSPROJECT/HRMSPROJECT/urls.py
+from django.contrib import admin
+from django.urls import path
+
+urlpatterns = [
+    path('admin/', admin.site.urls),
+]

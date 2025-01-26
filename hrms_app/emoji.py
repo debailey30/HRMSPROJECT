@@ -1,5 +1,5 @@
 import sys
-from typing import TYPE_CHECKING, Optional, Union
+from custom_typing import TYPE_CHECKING, Optional, Union
 
 from .jupyter import JupyterMixin
 from .segment import Segment
@@ -8,7 +8,7 @@ from ._emoji_codes import EMOJI
 from ._emoji_replace import _emoji_replace
 
 if sys.version_info >= (3, 8):
-    from typing import Literal
+    from custom_typing import Literal
 else:
     from pip._vendor.typing_extensions import Literal  # pragma: no cover
 

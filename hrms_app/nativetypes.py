@@ -3,7 +3,7 @@ from ast import literal_eval
 from ast import parse
 from itertools import chain
 from itertools import islice
-from types import GeneratorType
+from custom_types import GeneratorType
 
 from . import nodes
 from .compiler import CodeGenerator

@@ -11,7 +11,7 @@ import time
 import typing as t
 from gettext import gettext as _
 from io import StringIO
-from types import TracebackType
+from custom_types import TracebackType
 
 from ._compat import _default_text_stdout
 from ._compat import CYGWIN

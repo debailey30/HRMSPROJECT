@@ -15,7 +15,7 @@ import http.client
 import urllib.parse
 import urllib.request
 import urllib.error
-from functools import wraps
+from custom_functools import wraps
 
 import setuptools
 from pkg_resources import (

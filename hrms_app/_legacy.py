@@ -4,7 +4,7 @@ import pathlib
 import types
 import warnings
 
-from typing import Union, Iterable, ContextManager, BinaryIO, TextIO, Any
+from custom_typing import Union, Iterable, ContextManager, BinaryIO, TextIO, Any
 
 from . import _common
 

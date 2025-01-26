@@ -1,19 +1,10 @@
-#include <QApplication>
-#include "MainWindow.h"
-#include "LoginDialog.h"
+//#include <vxl_config.h>
+#include <vil/vil_rgb.h>
+#include <vil/vil_load.h>
+#include <vil/vil_image_view.h>
 
-int main(int argc, char *argv[]) {
-    QApplication app(argc, argv);
-
-    // Show the login dialog
-    LoginDialog loginDialog;
-    if (loginDialog.exec() == QDialog::Accepted) {
-        // If login is successful, show the main window with the user role
-        MainWindow window(loginDialog.getUserRole());
-        window.show();
-        return app.exec();
-    }
-
-    // If login is not successful, exit the application
-    return 0;
+int main()
+{
+  vil_image_view<vil_rgb<vxl_byte> > img = vil_load("foo.tiff");
+  return 0;
 }

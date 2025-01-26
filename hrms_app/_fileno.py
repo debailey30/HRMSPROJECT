@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import IO, Callable
+from custom_typing import IO, Callable
 
 
 def get_fileno(file_like: IO[str]) -> int | None:

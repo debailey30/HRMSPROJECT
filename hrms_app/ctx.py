@@ -3,12 +3,12 @@ from __future__ import annotations
 import contextvars
 import sys
 import typing as t
-from functools import update_wrapper
-from types import TracebackType
+from custom_functools import update_wrapper
+from custom_types import TracebackType
 
 from werkzeug.exceptions import HTTPException
 
-from . import typing as ft
+from . import custom_typing as ft
 from .globals import _cv_app
 from .globals import _cv_request
 from .signals import appcontext_popped

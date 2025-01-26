@@ -1,326 +1,539 @@
-"""
-We perform uniqueness checks explicitly on the serializer class, rather
-the using Django's `.full_clean()`.
+import ipaddress
+import re
+from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
-This gives us better separation of concerns, allows us to use single-step
-object creation, and makes it possible to switch between using the implicit
-`ModelSerializer` class and an equivalent explicit `Serializer` class.
-"""
-from django.db import DataError
-from django.utils.translation import gettext_lazy as _
+from django.core.exceptions import ValidationError
+from django.utils.deconstruct import deconstructible
+from django.utils.functional import SimpleLazyObject
+from django.utils.ipv6 import is_valid_ipv6_address
+from django.utils.translation import gettext_lazy as _, ngettext_lazy
 
-from rest_framework.exceptions import ValidationError
-from rest_framework.utils.representation import smart_repr
-
-
-# Robust filter and exist implementations. Ensures that queryset.exists() for
-# an invalid value returns `False`, rather than raising an error.
-# Refs https://github.com/encode/django-rest-framework/issues/3381
-def qs_exists(queryset):
-    try:
-        return queryset.exists()
-    except (TypeError, ValueError, DataError):
-        return False
+# These values, if given to validate(), will trigger the self.required check.
+EMPTY_VALUES = (None, '', [], (), {})
 
 
-def qs_filter(queryset, **kwargs):
-    try:
-        return queryset.filter(**kwargs)
-    except (TypeError, ValueError, DataError):
-        return queryset.none()
-
-
-class UniqueValidator:
-    """
-    Validator that corresponds to `unique=True` on a model field.
-
-    Should be applied to an individual field on the serializer.
-    """
-    message = _('This field must be unique.')
-    requires_context = True
-
-    def __init__(self, queryset, message=None, lookup='exact'):
-        self.queryset = queryset
-        self.message = message or self.message
-        self.lookup = lookup
-
-    def filter_queryset(self, value, queryset, field_name):
-        """
-        Filter the queryset to all instances matching the given attribute.
-        """
-        filter_kwargs = {'%s__%s' % (field_name, self.lookup): value}
-        return qs_filter(queryset, **filter_kwargs)
-
-    def exclude_current_instance(self, queryset, instance):
-        """
-        If an instance is being updated, then do not include
-        that instance itself as a uniqueness conflict.
-        """
-        if instance is not None:
-            return queryset.exclude(pk=instance.pk)
-        return queryset
-
-    def __call__(self, value, serializer_field):
-        # Determine the underlying model field name. This may not be the
-        # same as the serializer field name if `source=<>` is set.
-        field_name = serializer_field.source_attrs[-1]
-        # Determine the existing instance, if this is an update operation.
-        instance = getattr(serializer_field.parent, 'instance', None)
-
-        queryset = self.queryset
-        queryset = self.filter_queryset(value, queryset, field_name)
-        queryset = self.exclude_current_instance(queryset, instance)
-        if qs_exists(queryset):
-            raise ValidationError(self.message, code='unique')
-
-    def __repr__(self):
-        return '<%s(queryset=%s)>' % (
-            self.__class__.__name__,
-            smart_repr(self.queryset)
-        )
-
-    def __eq__(self, other):
-        if not isinstance(other, self.__class__):
-            return NotImplemented
-        return (self.message == other.message
-                and self.requires_context == other.requires_context
-                and self.queryset == other.queryset
-                and self.lookup == other.lookup
-                )
-
-
-class UniqueTogetherValidator:
-    """
-    Validator that corresponds to `unique_together = (...)` on a model class.
-
-    Should be applied to the serializer class, not to an individual field.
-    """
-    message = _('The fields {field_names} must make a unique set.')
-    missing_message = _('This field is required.')
-    requires_context = True
-
-    def __init__(self, queryset, fields, message=None):
-        self.queryset = queryset
-        self.fields = fields
-        self.message = message or self.message
-
-    def enforce_required_fields(self, attrs, serializer):
-        """
-        The `UniqueTogetherValidator` always forces an implied 'required'
-        state on the fields it applies to.
-        """
-        if serializer.instance is not None:
-            return
-
-        missing_items = {
-            field_name: self.missing_message
-            for field_name in self.fields
-            if serializer.fields[field_name].source not in attrs
-        }
-        if missing_items:
-            raise ValidationError(missing_items, code='required')
-
-    def filter_queryset(self, attrs, queryset, serializer):
-        """
-        Filter the queryset to all instances matching the given attributes.
-        """
-        # field names => field sources
-        sources = [
-            serializer.fields[field_name].source
-            for field_name in self.fields
-        ]
-
-        # If this is an update, then any unprovided field should
-        # have it's value set based on the existing instance attribute.
-        if serializer.instance is not None:
-            for source in sources:
-                if source not in attrs:
-                    attrs[source] = getattr(serializer.instance, source)
-
-        # Determine the filter keyword arguments and filter the queryset.
-        filter_kwargs = {
-            source: attrs[source]
-            for source in sources
-        }
-        return qs_filter(queryset, **filter_kwargs)
-
-    def exclude_current_instance(self, attrs, queryset, instance):
-        """
-        If an instance is being updated, then do not include
-        that instance itself as a uniqueness conflict.
-        """
-        if instance is not None:
-            return queryset.exclude(pk=instance.pk)
-        return queryset
-
-    def __call__(self, attrs, serializer):
-        self.enforce_required_fields(attrs, serializer)
-        queryset = self.queryset
-        queryset = self.filter_queryset(attrs, queryset, serializer)
-        queryset = self.exclude_current_instance(attrs, queryset, serializer.instance)
-
-        # Ignore validation if any field is None
-        if serializer.instance is None:
-            checked_values = [
-                value for field, value in attrs.items() if field in self.fields
-            ]
+def _lazy_re_compile(regex, flags=0):
+    """Lazily compile a regex with flags."""
+    def _compile():
+        # Compile the regex if it was not passed pre-compiled.
+        if isinstance(regex, str):
+            return re.compile(regex, flags)
         else:
-            # Ignore validation if all field values are unchanged
-            checked_values = [
-                value
-                for field, value in attrs.items()
-                if field in self.fields and value != getattr(serializer.instance, field)
-            ]
-
-        if checked_values and None not in checked_values and qs_exists(queryset):
-            field_names = ', '.join(self.fields)
-            message = self.message.format(field_names=field_names)
-            raise ValidationError(message, code='unique')
-
-    def __repr__(self):
-        return '<%s(queryset=%s, fields=%s)>' % (
-            self.__class__.__name__,
-            smart_repr(self.queryset),
-            smart_repr(self.fields)
-        )
-
-    def __eq__(self, other):
-        if not isinstance(other, self.__class__):
-            return NotImplemented
-        return (self.message == other.message
-                and self.requires_context == other.requires_context
-                and self.missing_message == other.missing_message
-                and self.queryset == other.queryset
-                and self.fields == other.fields
-                )
+            assert not flags, "flags must be empty if regex is passed pre-compiled"
+            return regex
+    return SimpleLazyObject(_compile)
 
 
-class ProhibitSurrogateCharactersValidator:
-    message = _('Surrogate characters are not allowed: U+{code_point:X}.')
-    code = 'surrogate_characters_not_allowed'
+@deconstructible
+class RegexValidator:
+    regex = ''
+    message = _('Enter a valid value.')
+    code = 'invalid'
+    inverse_match = False
+    flags = 0
+
+    def __init__(self, regex=None, message=None, code=None, inverse_match=None, flags=None):
+        if regex is not None:
+            self.regex = regex
+        if message is not None:
+            self.message = message
+        if code is not None:
+            self.code = code
+        if inverse_match is not None:
+            self.inverse_match = inverse_match
+        if flags is not None:
+            self.flags = flags
+        if self.flags and not isinstance(self.regex, str):
+            raise TypeError("If the flags are set, regex must be a regular expression string.")
+
+        self.regex = _lazy_re_compile(self.regex, self.flags)
 
     def __call__(self, value):
-        for surrogate_character in (ch for ch in str(value)
-                                    if 0xD800 <= ord(ch) <= 0xDFFF):
-            message = self.message.format(code_point=ord(surrogate_character))
-            raise ValidationError(message, code=self.code)
+        """
+        Validate that the input contains (or does *not* contain, if
+        inverse_match is True) a match for the regular expression.
+        """
+        regex_matches = self.regex.search(str(value))
+        invalid_input = regex_matches if self.inverse_match else not regex_matches
+        if invalid_input:
+            raise ValidationError(self.message, code=self.code)
 
     def __eq__(self, other):
-        if not isinstance(other, self.__class__):
-            return NotImplemented
-        return (self.message == other.message
-                and self.code == other.code
-                )
-
-
-class BaseUniqueForValidator:
-    message = None
-    missing_message = _('This field is required.')
-    requires_context = True
-
-    def __init__(self, queryset, field, date_field, message=None):
-        self.queryset = queryset
-        self.field = field
-        self.date_field = date_field
-        self.message = message or self.message
-
-    def enforce_required_fields(self, attrs):
-        """
-        The `UniqueFor<Range>Validator` classes always force an implied
-        'required' state on the fields they are applied to.
-        """
-        missing_items = {
-            field_name: self.missing_message
-            for field_name in [self.field, self.date_field]
-            if field_name not in attrs
-        }
-        if missing_items:
-            raise ValidationError(missing_items, code='required')
-
-    def filter_queryset(self, attrs, queryset, field_name, date_field_name):
-        raise NotImplementedError('`filter_queryset` must be implemented.')
-
-    def exclude_current_instance(self, attrs, queryset, instance):
-        """
-        If an instance is being updated, then do not include
-        that instance itself as a uniqueness conflict.
-        """
-        if instance is not None:
-            return queryset.exclude(pk=instance.pk)
-        return queryset
-
-    def __call__(self, attrs, serializer):
-        # Determine the underlying model field names. These may not be the
-        # same as the serializer field names if `source=<>` is set.
-        field_name = serializer.fields[self.field].source_attrs[-1]
-        date_field_name = serializer.fields[self.date_field].source_attrs[-1]
-
-        self.enforce_required_fields(attrs)
-        queryset = self.queryset
-        queryset = self.filter_queryset(attrs, queryset, field_name, date_field_name)
-        queryset = self.exclude_current_instance(attrs, queryset, serializer.instance)
-        if qs_exists(queryset):
-            message = self.message.format(date_field=self.date_field)
-            raise ValidationError({
-                self.field: message
-            }, code='unique')
-
-    def __eq__(self, other):
-        if not isinstance(other, self.__class__):
-            return NotImplemented
-        return (self.message == other.message
-                and self.missing_message == other.missing_message
-                and self.requires_context == other.requires_context
-                and self.queryset == other.queryset
-                and self.field == other.field
-                and self.date_field == other.date_field
-                )
-
-    def __repr__(self):
-        return '<%s(queryset=%s, field=%s, date_field=%s)>' % (
-            self.__class__.__name__,
-            smart_repr(self.queryset),
-            smart_repr(self.field),
-            smart_repr(self.date_field)
+        return (
+            isinstance(other, RegexValidator) and
+            self.regex.pattern == other.regex.pattern and
+            self.regex.flags == other.regex.flags and
+            (self.message == other.message) and
+            (self.code == other.code) and
+            (self.inverse_match == other.inverse_match)
         )
 
 
-class UniqueForDateValidator(BaseUniqueForValidator):
-    message = _('This field must be unique for the "{date_field}" date.')
+@deconstructible
+class URLValidator(RegexValidator):
+    ul = '\u00a1-\uffff'  # unicode letters range (must not be a raw string)
 
-    def filter_queryset(self, attrs, queryset, field_name, date_field_name):
-        value = attrs[self.field]
-        date = attrs[self.date_field]
+    # IP patterns
+    ipv4_re = r'(?:25[0-5]|2[0-4]\d|[0-1]?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|[0-1]?\d?\d)){3}'
+    ipv6_re = r'\[[0-9a-f:\.]+\]'  # (simple regex, validated later)
 
-        filter_kwargs = {}
-        filter_kwargs[field_name] = value
-        filter_kwargs['%s__day' % date_field_name] = date.day
-        filter_kwargs['%s__month' % date_field_name] = date.month
-        filter_kwargs['%s__year' % date_field_name] = date.year
-        return qs_filter(queryset, **filter_kwargs)
+    # Host patterns
+    hostname_re = r'[a-z' + ul + r'0-9](?:[a-z' + ul + r'0-9-]{0,61}[a-z' + ul + r'0-9])?'
+    # Max length for domain name labels is 63 characters per RFC 1034 sec. 3.1
+    domain_re = r'(?:\.(?!-)[a-z' + ul + r'0-9-]{1,63}(?<!-))*'
+    tld_re = (
+        r'\.'                                # dot
+        r'(?!-)'                             # can't start with a dash
+        r'(?:[a-z' + ul + '-]{2,63}'         # domain label
+        r'|xn--[a-z0-9]{1,59})'              # or punycode label
+        r'(?<!-)'                            # can't end with a dash
+        r'\.?'                               # may have a trailing dot
+    )
+    host_re = '(' + hostname_re + domain_re + tld_re + '|localhost)'
+
+    regex = _lazy_re_compile(
+        r'^(?:[a-z0-9\.\-\+]*)://'  # scheme is validated separately
+        r'(?:[^\s:@/]+(?::[^\s:@/]*)?@)?'  # user:pass authentication
+        r'(?:' + ipv4_re + '|' + ipv6_re + '|' + host_re + ')'
+        r'(?::\d{2,5})?'  # port
+        r'(?:[/?#][^\s]*)?'  # resource path
+        r'\Z', re.IGNORECASE)
+    message = _('Enter a valid URL.')
+    schemes = ['http', 'https', 'ftp', 'ftps']
+
+    def __init__(self, schemes=None, **kwargs):
+        super().__init__(**kwargs)
+        if schemes is not None:
+            self.schemes = schemes
+
+    def __call__(self, value):
+        # Check first if the scheme is valid
+        scheme = value.split('://')[0].lower()
+        if scheme not in self.schemes:
+            raise ValidationError(self.message, code=self.code)
+
+        # Then check full URL
+        try:
+            super().__call__(value)
+        except ValidationError as e:
+            # Trivial case failed. Try for possible IDN domain
+            if value:
+                try:
+                    scheme, netloc, path, query, fragment = urlsplit(value)
+                except ValueError:  # for example, "Invalid IPv6 URL"
+                    raise ValidationError(self.message, code=self.code)
+                try:
+                    netloc = netloc.encode('idna').decode('ascii')  # IDN -> ACE
+                except UnicodeError:  # invalid domain part
+                    raise e
+                url = urlunsplit((scheme, netloc, path, query, fragment))
+                super().__call__(url)
+            else:
+                raise
+        else:
+            # Now verify IPv6 in the netloc part
+            host_match = re.search(r'^\[(.+)\](?::\d{2,5})?$', urlsplit(value).netloc)
+            if host_match:
+                potential_ip = host_match.groups()[0]
+                try:
+                    validate_ipv6_address(potential_ip)
+                except ValidationError:
+                    raise ValidationError(self.message, code=self.code)
+
+        # The maximum length of a full host name is 253 characters per RFC 1034
+        # section 3.1. It's defined to be 255 bytes or less, but this includes
+        # one byte for the length of the name and one byte for the trailing dot
+        # that's used to indicate absolute names in DNS.
+        if len(urlsplit(value).netloc) > 253:
+            raise ValidationError(self.message, code=self.code)
 
 
-class UniqueForMonthValidator(BaseUniqueForValidator):
-    message = _('This field must be unique for the "{date_field}" month.')
-
-    def filter_queryset(self, attrs, queryset, field_name, date_field_name):
-        value = attrs[self.field]
-        date = attrs[self.date_field]
-
-        filter_kwargs = {}
-        filter_kwargs[field_name] = value
-        filter_kwargs['%s__month' % date_field_name] = date.month
-        return qs_filter(queryset, **filter_kwargs)
+integer_validator = RegexValidator(
+    _lazy_re_compile(r'^-?\d+\Z'),
+    message=_('Enter a valid integer.'),
+    code='invalid',
+)
 
 
-class UniqueForYearValidator(BaseUniqueForValidator):
-    message = _('This field must be unique for the "{date_field}" year.')
+def validate_integer(value):
+    return integer_validator(value)
 
-    def filter_queryset(self, attrs, queryset, field_name, date_field_name):
-        value = attrs[self.field]
-        date = attrs[self.date_field]
 
-        filter_kwargs = {}
-        filter_kwargs[field_name] = value
-        filter_kwargs['%s__year' % date_field_name] = date.year
-        return qs_filter(queryset, **filter_kwargs)
+@deconstructible
+class EmailValidator:
+    message = _('Enter a valid email address.')
+    code = 'invalid'
+    user_regex = _lazy_re_compile(
+        r"(^[-!#$%&'*+/=?^_`{}|~0-9A-Z]+(\.[-!#$%&'*+/=?^_`{}|~0-9A-Z]+)*\Z"  # dot-atom
+        r'|^"([\001-\010\013\014\016-\037!#-\[\]-\177]|\\[\001-\011\013\014\016-\177])*"\Z)',  # quoted-string
+        re.IGNORECASE)
+    domain_regex = _lazy_re_compile(
+        # max length for domain name labels is 63 characters per RFC 1034
+        r'((?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+)(?:[A-Z0-9-]{2,63}(?<!-))\Z',
+        re.IGNORECASE)
+    literal_regex = _lazy_re_compile(
+        # literal form, ipv4 or ipv6 address (SMTP 4.1.3)
+        r'\[([A-f0-9:\.]+)\]\Z',
+        re.IGNORECASE)
+    domain_whitelist = ['localhost']
+
+    def __init__(self, message=None, code=None, whitelist=None):
+        if message is not None:
+            self.message = message
+        if code is not None:
+            self.code = code
+        if whitelist is not None:
+            self.domain_whitelist = whitelist
+
+    def __call__(self, value):
+        if not value or '@' not in value:
+            raise ValidationError(self.message, code=self.code)
+
+        user_part, domain_part = value.rsplit('@', 1)
+
+        if not self.user_regex.match(user_part):
+            raise ValidationError(self.message, code=self.code)
+
+        if (domain_part not in self.domain_whitelist and
+                not self.validate_domain_part(domain_part)):
+            # Try for possible IDN domain-part
+            try:
+                domain_part = domain_part.encode('idna').decode('ascii')
+            except UnicodeError:
+                pass
+            else:
+                if self.validate_domain_part(domain_part):
+                    return
+            raise ValidationError(self.message, code=self.code)
+
+    def validate_domain_part(self, domain_part):
+        if self.domain_regex.match(domain_part):
+            return True
+
+        literal_match = self.literal_regex.match(domain_part)
+        if literal_match:
+            ip_address = literal_match.group(1)
+            try:
+                validate_ipv46_address(ip_address)
+                return True
+            except ValidationError:
+                pass
+        return False
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, EmailValidator) and
+            (self.domain_whitelist == other.domain_whitelist) and
+            (self.message == other.message) and
+            (self.code == other.code)
+        )
+
+
+validate_email = EmailValidator()
+
+slug_re = _lazy_re_compile(r'^[-a-zA-Z0-9_]+\Z')
+validate_slug = RegexValidator(
+    slug_re,
+    # Translators: "letters" means latin letters: a-z and A-Z.
+    _("Enter a valid 'slug' consisting of letters, numbers, underscores or hyphens."),
+    'invalid'
+)
+
+slug_unicode_re = _lazy_re_compile(r'^[-\w]+\Z')
+validate_unicode_slug = RegexValidator(
+    slug_unicode_re,
+    _("Enter a valid 'slug' consisting of Unicode letters, numbers, underscores, or hyphens."),
+    'invalid'
+)
+
+
+def validate_ipv4_address(value):
+    try:
+        ipaddress.IPv4Address(value)
+    except ValueError:
+        raise ValidationError(_('Enter a valid IPv4 address.'), code='invalid')
+
+
+def validate_ipv6_address(value):
+    if not is_valid_ipv6_address(value):
+        raise ValidationError(_('Enter a valid IPv6 address.'), code='invalid')
+
+
+def validate_ipv46_address(value):
+    try:
+        validate_ipv4_address(value)
+    except ValidationError:
+        try:
+            validate_ipv6_address(value)
+        except ValidationError:
+            raise ValidationError(_('Enter a valid IPv4 or IPv6 address.'), code='invalid')
+
+
+ip_address_validator_map = {
+    'both': ([validate_ipv46_address], _('Enter a valid IPv4 or IPv6 address.')),
+    'ipv4': ([validate_ipv4_address], _('Enter a valid IPv4 address.')),
+    'ipv6': ([validate_ipv6_address], _('Enter a valid IPv6 address.')),
+}
+
+
+def ip_address_validators(protocol, unpack_ipv4):
+    """
+    Depending on the given parameters, return the appropriate validators for
+    the GenericIPAddressField.
+    """
+    if protocol != 'both' and unpack_ipv4:
+        raise ValueError(
+            "You can only use `unpack_ipv4` if `protocol` is set to 'both'")
+    try:
+        return ip_address_validator_map[protocol.lower()]
+    except KeyError:
+        raise ValueError("The protocol '%s' is unknown. Supported: %s"
+                         % (protocol, list(ip_address_validator_map)))
+
+
+def int_list_validator(sep=',', message=None, code='invalid', allow_negative=False):
+    regexp = _lazy_re_compile(r'^%(neg)s\d+(?:%(sep)s%(neg)s\d+)*\Z' % {
+        'neg': '(-)?' if allow_negative else '',
+        'sep': re.escape(sep),
+    })
+    return RegexValidator(regexp, message=message, code=code)
+
+
+validate_comma_separated_integer_list = int_list_validator(
+    message=_('Enter only digits separated by commas.'),
+)
+
+
+@deconstructible
+class BaseValidator:
+    message = _('Ensure this value is %(limit_value)s (it is %(show_value)s).')
+    code = 'limit_value'
+
+    def __init__(self, limit_value, message=None):
+        self.limit_value = limit_value
+        if message:
+            self.message = message
+
+    def __call__(self, value):
+        cleaned = self.clean(value)
+        limit_value = self.limit_value() if callable(self.limit_value) else self.limit_value
+        params = {'limit_value': limit_value, 'show_value': cleaned, 'value': value}
+        if self.compare(cleaned, limit_value):
+            raise ValidationError(self.message, code=self.code, params=params)
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, self.__class__) and
+            self.limit_value == other.limit_value and
+            self.message == other.message and
+            self.code == other.code
+        )
+
+    def compare(self, a, b):
+        return a is not b
+
+    def clean(self, x):
+        return x
+
+
+@deconstructible
+class MaxValueValidator(BaseValidator):
+    message = _('Ensure this value is less than or equal to %(limit_value)s.')
+    code = 'max_value'
+
+    def compare(self, a, b):
+        return a > b
+
+
+@deconstructible
+class MinValueValidator(BaseValidator):
+    message = _('Ensure this value is greater than or equal to %(limit_value)s.')
+    code = 'min_value'
+
+    def compare(self, a, b):
+        return a < b
+
+
+@deconstructible
+class MinLengthValidator(BaseValidator):
+    message = ngettext_lazy(
+        'Ensure this value has at least %(limit_value)d character (it has %(show_value)d).',
+        'Ensure this value has at least %(limit_value)d characters (it has %(show_value)d).',
+        'limit_value')
+    code = 'min_length'
+
+    def compare(self, a, b):
+        return a < b
+
+    def clean(self, x):
+        return len(x)
+
+
+@deconstructible
+class MaxLengthValidator(BaseValidator):
+    message = ngettext_lazy(
+        'Ensure this value has at most %(limit_value)d character (it has %(show_value)d).',
+        'Ensure this value has at most %(limit_value)d characters (it has %(show_value)d).',
+        'limit_value')
+    code = 'max_length'
+
+    def compare(self, a, b):
+        return a > b
+
+    def clean(self, x):
+        return len(x)
+
+
+@deconstructible
+class DecimalValidator:
+    """
+    Validate that the input does not exceed the maximum number of digits
+    expected, otherwise raise ValidationError.
+    """
+    messages = {
+        'invalid': _('Enter a number.'),
+        'max_digits': ngettext_lazy(
+            'Ensure that there are no more than %(max)s digit in total.',
+            'Ensure that there are no more than %(max)s digits in total.',
+            'max'
+        ),
+        'max_decimal_places': ngettext_lazy(
+            'Ensure that there are no more than %(max)s decimal place.',
+            'Ensure that there are no more than %(max)s decimal places.',
+            'max'
+        ),
+        'max_whole_digits': ngettext_lazy(
+            'Ensure that there are no more than %(max)s digit before the decimal point.',
+            'Ensure that there are no more than %(max)s digits before the decimal point.',
+            'max'
+        ),
+    }
+
+    def __init__(self, max_digits, decimal_places):
+        self.max_digits = max_digits
+        self.decimal_places = decimal_places
+
+    def __call__(self, value):
+        digit_tuple, exponent = value.as_tuple()[1:]
+        if exponent in {'F', 'n', 'N'}:
+            raise ValidationError(self.messages['invalid'])
+        if exponent >= 0:
+            # A positive exponent adds that many trailing zeros.
+            digits = len(digit_tuple) + exponent
+            decimals = 0
+        else:
+            # If the absolute value of the negative exponent is larger than the
+            # number of digits, then it's the same as the number of digits,
+            # because it'll consume all of the digits in digit_tuple and then
+            # add abs(exponent) - len(digit_tuple) leading zeros after the
+            # decimal point.
+            if abs(exponent) > len(digit_tuple):
+                digits = decimals = abs(exponent)
+            else:
+                digits = len(digit_tuple)
+                decimals = abs(exponent)
+        whole_digits = digits - decimals
+
+        if self.max_digits is not None and digits > self.max_digits:
+            raise ValidationError(
+                self.messages['max_digits'],
+                code='max_digits',
+                params={'max': self.max_digits},
+            )
+        if self.decimal_places is not None and decimals > self.decimal_places:
+            raise ValidationError(
+                self.messages['max_decimal_places'],
+                code='max_decimal_places',
+                params={'max': self.decimal_places},
+            )
+        if (self.max_digits is not None and self.decimal_places is not None and
+                whole_digits > (self.max_digits - self.decimal_places)):
+            raise ValidationError(
+                self.messages['max_whole_digits'],
+                code='max_whole_digits',
+                params={'max': (self.max_digits - self.decimal_places)},
+            )
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, self.__class__) and
+            self.max_digits == other.max_digits and
+            self.decimal_places == other.decimal_places
+        )
+
+
+@deconstructible
+class FileExtensionValidator:
+    message = _(
+        "File extension '%(extension)s' is not allowed. "
+        "Allowed extensions are: '%(allowed_extensions)s'."
+    )
+    code = 'invalid_extension'
+
+    def __init__(self, allowed_extensions=None, message=None, code=None):
+        if allowed_extensions is not None:
+            allowed_extensions = [allowed_extension.lower() for allowed_extension in allowed_extensions]
+        self.allowed_extensions = allowed_extensions
+        if message is not None:
+            self.message = message
+        if code is not None:
+            self.code = code
+
+    def __call__(self, value):
+        extension = Path(value.name).suffix[1:].lower()
+        if self.allowed_extensions is not None and extension not in self.allowed_extensions:
+            raise ValidationError(
+                self.message,
+                code=self.code,
+                params={
+                    'extension': extension,
+                    'allowed_extensions': ', '.join(self.allowed_extensions)
+                }
+            )
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, self.__class__) and
+            self.allowed_extensions == other.allowed_extensions and
+            self.message == other.message and
+            self.code == other.code
+        )
+
+
+def get_available_image_extensions():
+    try:
+        from PIL import Image
+    except ImportError:
+        return []
+    else:
+        Image.init()
+        return [ext.lower()[1:] for ext in Image.EXTENSION]
+
+
+def validate_image_file_extension(value):
+    return FileExtensionValidator(allowed_extensions=get_available_image_extensions())(value)
+
+
+@deconstructible
+class ProhibitNullCharactersValidator:
+    """Validate that the string doesn't contain the null character."""
+    message = _('Null characters are not allowed.')
+    code = 'null_characters_not_allowed'
+
+    def __init__(self, message=None, code=None):
+        if message is not None:
+            self.message = message
+        if code is not None:
+            self.code = code
+
+    def __call__(self, value):
+        if '\x00' in str(value):
+            raise ValidationError(self.message, code=self.code)
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, self.__class__) and
+            self.message == other.message and
+            self.code == other.code
+        )

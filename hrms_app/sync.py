@@ -9,7 +9,7 @@ import threading
 import warnings
 import weakref
 from concurrent.futures import Future, ThreadPoolExecutor
-from typing import (
+from custom_typing import (
     TYPE_CHECKING,
     Any,
     Awaitable,
@@ -28,7 +28,7 @@ from .current_thread_executor import CurrentThreadExecutor
 from .local import Local
 
 if sys.version_info >= (3, 10):
-    from typing import ParamSpec
+    from custom_typing import ParamSpec
 else:
     from typing_extensions import ParamSpec
 

@@ -8,7 +8,7 @@ import os
 import re
 import time
 import zlib
-from typing import IO, TYPE_CHECKING, Any, NamedTuple, Union
+from custom_typing import IO, TYPE_CHECKING, Any, NamedTuple, Union
 
 
 # see 7.9.2.2 Text String Type on page 86 and D.3 PDFDocEncoding Character Set

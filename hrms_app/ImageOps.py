@@ -22,7 +22,7 @@ import functools
 import operator
 import re
 from collections.abc import Sequence
-from typing import Protocol, cast
+from custom_typing import Protocol, cast
 
 from . import ExifTags, Image, ImagePalette
 

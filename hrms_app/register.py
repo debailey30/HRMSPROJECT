@@ -9,7 +9,7 @@ import getpass
 import io
 import urllib.parse
 import urllib.request
-from warnings import warn
+from custom_warnings import warn
 
 from distutils.core import PyPIRCCommand
 from distutils import log

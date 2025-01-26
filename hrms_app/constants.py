@@ -1,26 +1,39 @@
-"""
-Constants specific to the SQL storage portion of the ORM.
-"""
-from django.utils.regex_helper import _lazy_re_compile
+######################## BEGIN LICENSE BLOCK ########################
+# The Original Code is Mozilla Universal charset detector code.
+#
+# The Initial Developer of the Original Code is
+# Netscape Communications Corporation.
+# Portions created by the Initial Developer are Copyright (C) 2001
+# the Initial Developer. All Rights Reserved.
+#
+# Contributor(s):
+#   Mark Pilgrim - port to Python
+#   Shy Shalom - original C code
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; either
+# version 2.1 of the License, or (at your option) any later version.
+# 
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+# 
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
+# 02110-1301  USA
+######################### END LICENSE BLOCK #########################
 
-# Size of each "chunk" for get_iterator calls.
-# Larger values are slightly faster at the expense of more storage space.
-GET_ITERATOR_CHUNK_SIZE = 100
+_debug = 0
 
-# Namedtuples for sql.* internal use.
+eDetecting = 0
+eFoundIt = 1
+eNotMe = 2
 
-# How many results to expect from a cursor.execute call
-MULTI = 'multi'
-SINGLE = 'single'
-CURSOR = 'cursor'
-NO_RESULTS = 'no results'
+eStart = 0
+eError = 1
+eItsMe = 2
 
-ORDER_DIR = {
-    'ASC': ('ASC', 'DESC'),
-    'DESC': ('DESC', 'ASC'),
-}
-ORDER_PATTERN = _lazy_re_compile(r'[-+]?[.\w]+$')
-
-# SQL join types.
-INNER = 'INNER JOIN'
-LOUTER = 'LEFT OUTER JOIN'
+SHORTCUT_THRESHOLD = 0.95

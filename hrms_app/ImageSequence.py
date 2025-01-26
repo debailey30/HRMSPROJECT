@@ -16,7 +16,7 @@
 ##
 from __future__ import annotations
 
-from typing import Callable
+from custom_typing import Callable
 
 from . import Image
 

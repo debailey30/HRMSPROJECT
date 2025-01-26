@@ -1,4 +1,4 @@
-from typing import Iterable, Tuple, TypeVar
+from custom_typing import Iterable, Tuple, TypeVar
 
 T = TypeVar("T")
 

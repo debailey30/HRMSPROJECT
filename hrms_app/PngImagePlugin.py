@@ -40,7 +40,7 @@ import warnings
 import zlib
 from collections.abc import Callable
 from enum import IntEnum
-from typing import IO, TYPE_CHECKING, Any, NamedTuple, NoReturn, cast
+from custom_typing import IO, TYPE_CHECKING, Any, NamedTuple, NoReturn, cast
 
 from . import Image, ImageChops, ImageFile, ImagePalette, ImageSequence
 from ._binary import i16be as i16

@@ -2,7 +2,7 @@
 from collections.abc import MutableMapping, Mapping, MutableSequence, Iterator
 import pprint
 from weakref import ref as wkref
-from typing import Tuple, Any
+from custom_typing import Tuple, Any
 
 str_type: Tuple[type, ...] = (str, bytes)
 _generator_type = type((_ for _ in ()))

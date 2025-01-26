@@ -13,6 +13,14 @@ set(CMAKE_PREFIX_PATH "C:/Qt/6.8.1/msvc2022_64")
 # Enable debug output for finding packages
 set(QT_DEBUG_FIND_PACKAGE ON)
 
+# Enable the generation of compile_commands.json
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Enable automatic handling of UIC, MOC, and RCC files
+set(CMAKE_AUTOUIC ON)
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+
 # Find the required Qt packages
 find_package(Qt6 6.8.1 REQUIRED COMPONENTS Widgets Gui Core Quick)
 

@@ -25,7 +25,7 @@ from __future__ import annotations
 import warnings
 from io import BytesIO
 from math import ceil, log
-from typing import IO, NamedTuple
+from custom_typing import IO, NamedTuple
 
 from . import BmpImagePlugin, Image, ImageFile, PngImagePlugin
 from ._binary import i16le as i16

@@ -18,7 +18,7 @@ import os
 import pkgutil
 import sys
 import re
-from collections import deque, namedtuple, defaultdict
+from custom_collections import deque, namedtuple, defaultdict
 import urllib.request
 import warnings
 import importlib.util

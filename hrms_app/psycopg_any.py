@@ -1,5 +1,5 @@
 import ipaddress
-from functools import lru_cache
+from custom_functools import lru_cache
 
 try:
     from psycopg import ClientCursor, IsolationLevel, adapt, adapters, errors, sql

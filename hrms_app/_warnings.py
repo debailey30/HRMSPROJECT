@@ -1,4 +1,4 @@
-from typing import final
+from custom_typing import final
 
 
 class PluggyWarning(UserWarning):

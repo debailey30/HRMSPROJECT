@@ -1,54 +1,70 @@
+import os
+import string
+import urllib.parse
+import urllib.request
+from typing import Optional, FrozenSet, NewType, Tuple, Union, cast
+from .compat import WINDOWS  # Import WINDOWS to check if the platform is Windows
+import logging
+import platform
+import sys
+import sysconfig
+from importlib.machinery import EXTENSION_SUFFIXES
 from django.contrib import admin
 from django.urls import path, include
-from django.conf import settings
-from django.conf.urls.static import static
-from hrms import views  # Ensure this import is correct
 
-app_name = 'hrms'
+def get_url_scheme(url: str) -> Optional[str]:
+    if ":" not in url:
+        return None
+    return url.split(":", 1)[0].lower()
+
+def path_to_url(path: str) -> str:
+    """
+    Convert a path to a file: URL.  The path will be made absolute and have
+    quoted path parts.
+    """
+    path = os.path.normpath(os.path.abspath(path))
+    url = urllib.parse.urljoin("file:", urllib.request.pathname2url(path))
+    return url
+
+def url_to_path(url: str) -> str:
+    """
+    Convert a file: URL to a path.
+    """
+    assert url.startswith("file:"), f"You can only turn file: urls into filenames (not {url!r})"
+
+    _, netloc, path, _, _ = urllib.parse.urlsplit(url)
+
+    if not netloc or netloc == "localhost":
+        # According to RFC 8089, same as empty authority.
+        netloc = ""
+    elif WINDOWS:
+        # If we have a UNC path, prepend UNC share notation.
+        netloc = "\\\\" + netloc
+    else:
+        raise ValueError(f"non-local file URIs are not supported on this platform: {url!r}")
+
+    path = urllib.request.url2pathname(netloc + path)
+
+    # On Windows systems, urlsplit parses the path as something like "/C:/Users/foo".
+    # This creates issues for path-related functions like io.open(), so we try
+    # to detect and strip the leading slash.
+    if (
+        WINDOWS
+        and not netloc  # Not UNC.
+        and len(path) >= 3
+        and path[0] == "/"  # Leading slash to strip.
+        and path[1] in string.ascii_letters  # Drive letter.
+        and path[2:4] in (":", ":/")  # Colon + end of string, or colon + absolute path.
+    ):
+        path = path[1:]
+
+    return path
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', include('hrms.urls', namespace='hrms')),  # Include hrms app URLs
-    path('', views.Index.as_view(), name='index'),
-    path('create/', views.employee_create, name='employee_create'),
-    path('register/', views.Register.as_view(), name='register'),
-    path('recruitment/delete/<int:pk>/', views.RecruitmentDelete.as_view(), name='recruitmentdelete'),
-    # path('recruitment/new/', views.RecruitmentCreate.as_view(), name='recruitment_create'),
+    path('hrms_app/', include('hrms_app.urls')),
+    # Other URL patterns...
+]
 
-    # Authentication
-    path('login/', views.Login_View.as_view(), name='login'),
-    path('logout/', views.Logout_View.as_view(), name='logout'),
-    path('dashboard/', views.Dashboard.as_view(), name='dashboard'),
-
-    # Employee Routes
-    path('dashboard/employee/', views.Employee_All.as_view(), name='employee_all'),
-    path('dashboard/employee/new/', views.Employee_New.as_view(), name='employee_new'),
-    path('dashboard/employee/<int:pk>/view/', views.Employee_View.as_view(), name='employee_view'),
-    path('dashboard/employee/<int:pk>/update/', views.Employee_Update.as_view(), name='employee_update'),
-    path('dashboard/employee/<int:pk>/delete/', views.Employee_Delete.as_view(), name='employee_delete'),
-    path('dashboard/employee/<int:id>/kin/add/', views.Employee_Kin_Add.as_view(), name='kin_add'),
-    path('dashboard/employee/<int:id>/kin/<int:pk>/update/', views.Employee_Kin_Update.as_view(), name='kin_update'),
-
-    # Department Routes
-    path('dashboard/department/<int:pk>/', views.Department_Detail.as_view(), name='dept_detail'),
-    path('dashboard/department/add/', views.Department_New.as_view(), name='dept_new'),
-    path('dashboard/department/<int:pk>/update/', views.Department_Update.as_view(), name='dept_update'),
-
-    # Attendance Routes
-    path('dashboard/attendance/in/', views.Attendance_New.as_view(), name='attendance_new'),
-    path('dashboard/attendance/<int:pk>/out/', views.Attendance_Out.as_view(), name='attendance_out'),
-
-    # Leave Routes
-    path("dashboard/leave/new/", views.LeaveNew.as_view(), name="leave_new"),
-
-    # Recruitment
-    path("recruitment/", views.RecruitmentNew.as_view(), name="recruitment"),    
-    path("recruitment/all/", views.RecruitmentAll.as_view(), name="recruitmentall"),
-    path("recruitment/<int:pk>/delete/", views.RecruitmentDelete.as_view(), name="recruitmentdelete"),
-
-    # Payroll
-    path("employee/pay/", views.Pay.as_view(), name="payroll"),
-
-    # New Routes
-    path('employees/', views.employee_list, name='employee_list'),
-] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+BuildTag = Union[Tuple[()], Tuple[int, str]]
+NormalizedName = NewType("NormalizedName", str)

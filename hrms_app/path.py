@@ -22,12 +22,12 @@ from stat import S_ISDIR
 from stat import S_ISLNK
 from stat import S_ISREG
 import sys
-from typing import Any
-from typing import Callable
-from typing import cast
-from typing import Literal
-from typing import overload
-from typing import TYPE_CHECKING
+from custom_typing import Any
+from custom_typing import Callable
+from custom_typing import cast
+from custom_typing import Literal
+from custom_typing import overload
+from custom_typing import TYPE_CHECKING
 import uuid
 import warnings
 

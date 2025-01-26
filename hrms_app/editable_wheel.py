@@ -19,11 +19,11 @@ import traceback
 import warnings
 from contextlib import suppress
 from enum import Enum
-from inspect import cleandoc
+from custom_inspect import cleandoc
 from itertools import chain
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import (
+from custom_typing import (
     TYPE_CHECKING,
     Dict,
     Iterable,
@@ -45,7 +45,7 @@ if TYPE_CHECKING:
     from wheel.wheelfile import WheelFile  # noqa
 
 if sys.version_info >= (3, 8):
-    from typing import Protocol
+    from custom_typing import Protocol
 elif TYPE_CHECKING:
     from typing_extensions import Protocol
 else:

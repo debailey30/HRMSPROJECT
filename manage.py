@@ -1,5 +1,4 @@
-#!/usr/bin/env python
-# manage.py
+# filepath: /c:/Users/DeeAnn/Desktop/HRMSPROJECT/manage.py
 import os
 import sys
 

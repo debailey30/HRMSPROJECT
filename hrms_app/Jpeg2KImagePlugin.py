@@ -19,7 +19,7 @@ import io
 import os
 import struct
 from collections.abc import Callable
-from typing import IO, cast
+from custom_typing import IO, cast
 
 from . import Image, ImageFile, ImagePalette, _binary
 

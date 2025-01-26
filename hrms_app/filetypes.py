@@ -1,7 +1,7 @@
 """Filetype information.
 """
 
-from typing import Tuple
+from custom_typing import Tuple
 
 from pip._internal.utils.misc import splitext
 

@@ -6,14 +6,14 @@ Based on a recipe originally posted to ActiveState Recipes by Raymond Hettiger,
 and released under the MIT license.
 """
 import itertools as it
-from collections import deque
+from custom_collections import deque
 
 try:
     # Python 3
     from collections.abc import MutableSet, Sequence
 except ImportError:
     # Python 2.7
-    from collections import MutableSet, Sequence
+    from custom_collections import MutableSet, Sequence
 
 SLICE_ALL = slice(None)
 __version__ = "3.1"

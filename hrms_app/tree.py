@@ -1,4 +1,4 @@
-from typing import Iterator, List, Optional, Tuple
+from custom_typing import Iterator, List, Optional, Tuple
 
 from ._loop import loop_first, loop_last
 from .console import Console, ConsoleOptions, RenderableType, RenderResult
@@ -72,6 +72,7 @@ class Tree(JupyterMixin):
     def __rich_console__(
         self, console: "Console", options: "ConsoleOptions"
     ) -> "RenderResult":
+
         stack: List[Iterator[Tuple[bool, Tree]]] = []
         pop = stack.pop
         push = stack.append
@@ -194,6 +195,7 @@ class Tree(JupyterMixin):
 
 
 if __name__ == "__main__":  # pragma: no cover
+
     from pip._vendor.rich.console import Group
     from pip._vendor.rich.markdown import Markdown
     from pip._vendor.rich.panel import Panel

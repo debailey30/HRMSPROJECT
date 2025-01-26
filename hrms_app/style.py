@@ -1,8 +1,8 @@
 import sys
-from functools import lru_cache
+from custom_functools import lru_cache
 from marshal import dumps, loads
 from random import randint
-from typing import Any, Dict, Iterable, List, Optional, Type, Union, cast
+from custom_typing import Any, Dict, Iterable, List, Optional, Type, Union, cast
 
 from . import errors
 from .color import Color, ColorParseError, ColorSystem, blend_rgb

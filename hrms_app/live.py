@@ -1,7 +1,7 @@
 import sys
 from threading import Event, RLock, Thread
-from types import TracebackType
-from typing import IO, Any, Callable, List, Optional, TextIO, Type, cast
+from custom_types import TracebackType
+from custom_typing import IO, Any, Callable, List, Optional, TextIO, Type, cast
 
 from . import get_console
 from .console import Console, ConsoleRenderable, RenderableType, RenderHook
@@ -272,7 +272,7 @@ if __name__ == "__main__":  # pragma: no cover
     import random
     import time
     from itertools import cycle
-    from typing import Dict, List, Tuple
+    from custom_typing import Dict, List, Tuple
 
     from .align import Align
     from .console import Console
@@ -362,7 +362,7 @@ if __name__ == "__main__":  # pragma: no cover
                 table.add_column("Destination Currency")
                 table.add_column("Exchange Rate")
 
-                for (source, dest), exchange_rate in exchange_rate_dict.items():
+                for ((source, dest), exchange_rate) in exchange_rate_dict.items():
                     table.add_row(
                         source,
                         dest,

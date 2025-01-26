@@ -18,8 +18,8 @@
 from __future__ import annotations
 
 import io
-from functools import cached_property
-from typing import IO
+from custom_functools import cached_property
+from custom_typing import IO
 
 from . import Image, ImageFile, ImagePalette
 from ._binary import i8

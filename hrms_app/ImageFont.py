@@ -33,8 +33,8 @@ import sys
 import warnings
 from enum import IntEnum
 from io import BytesIO
-from types import ModuleType
-from typing import IO, TYPE_CHECKING, Any, BinaryIO, TypedDict, cast
+from custom_types import ModuleType
+from custom_typing import IO, TYPE_CHECKING, Any, BinaryIO, TypedDict, cast
 
 from . import Image, features
 from ._typing import StrOrBytesPath

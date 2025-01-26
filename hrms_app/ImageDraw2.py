@@ -24,7 +24,7 @@
 """
 from __future__ import annotations
 
-from typing import Any, AnyStr, BinaryIO
+from custom_typing import Any, AnyStr, BinaryIO
 
 from . import Image, ImageColor, ImageDraw, ImageFont, ImagePath
 from ._typing import Coords, StrOrBytesPath

@@ -1,6 +1,6 @@
-from functools import lru_cache
-from logging import getLogger
-from typing import List, Optional
+from custom_functools import lru_cache
+from custom_logging import getLogger
+from custom_typing import List, Optional
 
 from .constant import (
     COMMON_SAFE_ASCII_CHARACTERS,

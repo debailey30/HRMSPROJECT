@@ -19,7 +19,7 @@ import shutil
 import subprocess
 import sys
 from shlex import quote
-from typing import Any
+from custom_typing import Any
 
 from . import Image
 

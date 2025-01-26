@@ -3,7 +3,7 @@ This module houses the ctypes function prototypes for GDAL DataSource (raster)
 related data structures.
 """
 from ctypes import POINTER, c_bool, c_char_p, c_double, c_int, c_void_p
-from functools import partial
+from custom_functools import partial
 
 from django.contrib.gis.gdal.libgdal import GDAL_VERSION, std_call
 from django.contrib.gis.gdal.prototypes.generation import (
@@ -12,9 +12,9 @@ from django.contrib.gis.gdal.prototypes.generation import (
 )
 
 # For more detail about c function names and definitions see
-# https://gdal.org/api/raster_c_api.html
-# https://gdal.org/doxygen/gdalwarper_8h.html
-# https://gdal.org/api/gdal_utils.html
+# https://gdal.org/gdal_8h.html
+# https://gdal.org/gdalwarper_8h.html
+# https://www.gdal.org/gdal__utils_8h.html
 
 # Prepare partial functions that use cpl error codes
 void_output = partial(void_output, cpl=True)
@@ -102,7 +102,7 @@ auto_create_warped_vrt = voidptr_output(
 )
 
 # Create VSI gdal raster files from in-memory buffers.
-# https://gdal.org/api/cpl.html#cpl-vsi-h
+# https://gdal.org/cpl__vsi_8h.html
 create_vsi_file_from_mem_buffer = voidptr_output(std_call('VSIFileFromMemBuffer'), [c_char_p, c_void_p, c_int, c_int])
 get_mem_buffer_from_vsi_file = voidptr_output(std_call('VSIGetMemFileBuffer'), [c_char_p, POINTER(c_int), c_bool])
 unlink_vsi_file = int_output(std_call('VSIUnlink'), [c_char_p])

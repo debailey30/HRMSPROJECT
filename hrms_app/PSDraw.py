@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 import sys
-from typing import IO, TYPE_CHECKING
+from custom_typing import IO, TYPE_CHECKING
 
 from . import EpsImagePlugin
 

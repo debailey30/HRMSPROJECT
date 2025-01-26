@@ -3,7 +3,7 @@
 import functools
 import sys
 import typing as t
-from collections import abc
+from custom_collections import abc
 from itertools import chain
 
 from markupsafe import escape  # noqa: F401

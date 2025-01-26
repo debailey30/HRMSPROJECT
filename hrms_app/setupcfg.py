@@ -8,10 +8,10 @@ import os
 import contextlib
 import functools
 import warnings
-from collections import defaultdict
-from functools import partial
-from functools import wraps
-from typing import (TYPE_CHECKING, Callable, Any, Dict, Generic, Iterable, List,
+from custom_collections import defaultdict
+from custom_functools import partial
+from custom_functools import wraps
+from custom_typing import (TYPE_CHECKING, Callable, Any, Dict, Generic, Iterable, List,
                     Optional, Tuple, TypeVar, Union)
 
 from distutils.errors import DistutilsOptionError, DistutilsFileError

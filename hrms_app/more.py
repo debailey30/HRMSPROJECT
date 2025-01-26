@@ -1,8 +1,8 @@
 import warnings
 
-from collections import Counter, defaultdict, deque, abc
+from custom_collections import Counter, defaultdict, deque, abc
 from collections.abc import Sequence
-from functools import partial, reduce, wraps
+from custom_functools import partial, reduce, wraps
 from heapq import merge, heapify, heapreplace, heappop
 from itertools import (
     chain,

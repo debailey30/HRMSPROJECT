@@ -10,7 +10,7 @@ import logging
 import os
 import sys
 from optparse import Values
-from typing import TYPE_CHECKING, List, Optional
+from custom_typing import TYPE_CHECKING, List, Optional
 
 from pip._vendor import certifi
 

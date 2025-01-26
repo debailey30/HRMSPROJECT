@@ -9,7 +9,7 @@ import shutil
 import sys
 import warnings
 from contextlib import contextmanager
-from inspect import cleandoc
+from custom_inspect import cleandoc
 from pathlib import Path
 
 from distutils.core import Command

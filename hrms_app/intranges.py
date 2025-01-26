@@ -6,7 +6,7 @@ in the original list?" in time O(log(# runs)).
 """
 
 import bisect
-from typing import List, Tuple
+from custom_typing import List, Tuple
 
 def intranges_from_list(list_: List[int]) -> Tuple[int, ...]:
     """Represent a list of integers as a sequence of ranges:
