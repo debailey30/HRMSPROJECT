@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "@hint/hint-minified-js": "^2.4.27",
+    "@hint/hint-no-broken-links": "^4.2.27",
+    "@hint/hint-no-p3p": "^3.3.27",
+    "@hint/hint-performance-budget": "^2.4.27",
+    "@typescript-eslint/eslint-plugin": "^8.22.0",
+    "@typescript-eslint/parser": "^8.22.0"
+  }
+}

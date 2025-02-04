@@ -124,13 +124,16 @@ venv.bak/
 # mkdocs documentation
 /site
 
-# mypy
+# my
 .mypy_cache/
-.dmypy.json
 dmypy.json
 
-# Pyre type checker
 .pyre/
+# P
 
 # Virtual environment
 venv/
+
+# Node.js
+node_modules/
+node_modules
