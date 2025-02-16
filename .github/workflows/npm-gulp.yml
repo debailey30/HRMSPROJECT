@@ -1,28 +1,25 @@
 name: NodeJS with Gulp
 
-on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+on: [push]
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        node-version: [18.x, 20.x, 22.x]
-
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v2
 
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
+    - name: Setup Node.js
+      uses: actions/setup-node@v2
       with:
-        node-version: ${{ matrix.node-version }}
+        node-version: '14'
 
-    - name: Build
-      run: |
-        npm install
-        gulp
+    - name: Install dependencies
+      run: npm install
+      working-directory: C:\Users\DeeAnn\Desktop\HRMSPROJECT\.vscode
+      
+
+    - name: Run Gulp
+      run: gulp
+      working-directory: C:\Users\DeeAnn\Desktop\HRMSPROJECT\.vscode
