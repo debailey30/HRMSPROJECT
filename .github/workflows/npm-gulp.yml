@@ -17,10 +17,10 @@ jobs:
 
     - name: Install dependencies
       run: npm install
-      working-directory: "C:/Users/DeeAnn/Desktop/HRMSPROJECT/.vscode/getting-started-app/package.json"
+      working-directory: "./.vscode/getting-started-app"
     
       
 
     - name: Run Gulp
       run: gulp
-      working-directory: "C:/Users/DeeAnn/Desktop/HRMSPROJECT/.vscode/getting-started-app/package.json"
+      working-directory: "./.vscode/getting-started-app"
