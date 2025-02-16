@@ -1,0 +1,19 @@
+{
+  "name": "HRMSPROJECT",
+  "version": "1.0.0",
+  "description": "Hr Software",
+  "main": "index.js",
+  "scripts": {
+    "build": "gulp"
+  },
+  "dependencies": {
+    "some-dependency": "^1.0.0"
+  },
+  "devDependencies": {
+    "gulp": "^4.0.2",
+    "gulp-sass": "^4.1.0",
+    "typescript": "^4.1.3"
+  },
+  "author": "debailey30",
+  "license": "ISC"
+}
